@@ -1,0 +1,37 @@
+# Levanta el sistema completo: el servicio de turnos con su base y, incluido,
+# el servicio de catálogo con la suya. Requiere catalogo-service clonado al lado.
+
+include:
+  - ../catalogo-service/compose.yaml
+
+services:
+  turnos-db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${TURNOS_DB_NAME}
+      POSTGRES_USER: ${TURNOS_DB_USER}
+      POSTGRES_PASSWORD: ${TURNOS_DB_PASSWORD}
+    ports:
+      - "${TURNOS_DB_PORT}:5432"
+    volumes:
+      - turnos-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TURNOS_DB_USER} -d ${TURNOS_DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  turnos-service:
+    build: .
+    environment:
+      DB_URL: jdbc:postgresql://turnos-db:5432/${TURNOS_DB_NAME}
+      DB_USER: ${TURNOS_DB_USER}
+      DB_PASSWORD: ${TURNOS_DB_PASSWORD}
+    ports:
+      - "${TURNOS_PORT}:8080"
+    depends_on:
+      turnos-db:
+        condition: service_healthy
+
+volumes:
+  turnos-db-data:
