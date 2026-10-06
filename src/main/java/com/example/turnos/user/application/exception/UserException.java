@@ -8,7 +8,8 @@ public class UserException extends RuntimeException {
 	// El código funcional del contrato: con él decide el cliente, no con el texto del mensaje.
 	public enum Code {
 		USERNAME_ALREADY_EXISTS,
-		EMAIL_ALREADY_EXISTS
+		EMAIL_ALREADY_EXISTS,
+		INVALID_CREDENTIALS
 	}
 
 	private final Code code;
