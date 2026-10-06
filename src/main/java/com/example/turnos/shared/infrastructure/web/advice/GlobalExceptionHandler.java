@@ -2,6 +2,7 @@ package com.example.turnos.shared.infrastructure.web.advice;
 
 import java.util.List;
 
+import com.example.turnos.user.application.exception.UserException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -40,6 +41,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		problem.setProperty("code", VALIDATION_ERROR);
 		problem.setProperty("fieldErrors", fieldErrors);
 		return handleExceptionInternal(ex, problem, headers, status, request);
+	}
+
+	// Un login o un email repetidos son errores del pedido: 400 con el código funcional del contrato.
+	@ExceptionHandler(UserException.class)
+	public ResponseEntity<Object> handleUserException(UserException ex, WebRequest request) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+		problem.setProperty("code", ex.getCode().name());
+		return handleExceptionInternal(ex, problem, new HttpHeaders(), HttpStatus.BAD_REQUEST, request);
 	}
 
 	@ExceptionHandler(Exception.class)
