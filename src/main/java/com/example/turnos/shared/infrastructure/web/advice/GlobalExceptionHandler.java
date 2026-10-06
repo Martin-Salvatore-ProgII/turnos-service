@@ -2,6 +2,7 @@ package com.example.turnos.shared.infrastructure.web.advice;
 
 import java.util.List;
 
+import com.example.turnos.user.application.exception.UserException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -40,6 +41,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		problem.setProperty("code", VALIDATION_ERROR);
 		problem.setProperty("fieldErrors", fieldErrors);
 		return handleExceptionInternal(ex, problem, headers, status, request);
+	}
+
+	// Un login o un email repetidos son errores del pedido: 400 con el código funcional del contrato.
+	// Las credenciales incorrectas son un 401 sin código, como define el contrato para ese estado.
+	@ExceptionHandler(UserException.class)
+	public ResponseEntity<Object> handleUserException(UserException ex, WebRequest request) {
+		boolean invalidCredentials = ex.getCode() == UserException.Code.INVALID_CREDENTIALS;
+		HttpStatus status = invalidCredentials ? HttpStatus.UNAUTHORIZED : HttpStatus.BAD_REQUEST;
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, ex.getMessage());
+		if (!invalidCredentials) {
+			problem.setProperty("code", ex.getCode().name());
+		}
+		return handleExceptionInternal(ex, problem, new HttpHeaders(), status, request);
 	}
 
 	@ExceptionHandler(Exception.class)

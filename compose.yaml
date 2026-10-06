@@ -27,6 +27,13 @@ services:
       DB_URL: jdbc:postgresql://turnos-db:5432/${TURNOS_DB_NAME}
       DB_USER: ${TURNOS_DB_USER}
       DB_PASSWORD: ${TURNOS_DB_PASSWORD}
+      JWT_PRIVATE_KEY_LOCATION: file:/run/secrets/jwt-private.pem
+      ADMIN_LOGIN: ${TURNOS_ADMIN_LOGIN:-}
+      ADMIN_PASSWORD: ${TURNOS_ADMIN_PASSWORD:-}
+      ADMIN_EMAIL: ${TURNOS_ADMIN_EMAIL:-}
+    volumes:
+      # Archivos secretos, fuera de Git. Se montan en solo lectura.
+      - ./secrets:/run/secrets:ro
     ports:
       - "${TURNOS_PORT}:8080"
     depends_on:

@@ -5,3 +5,26 @@ spring:
     url: ${DB_URL}
     username: ${DB_USER}
     password: ${DB_PASSWORD}
+  jpa:
+    # El esquema lo define Flyway. Hibernate solo verifica que las entities coincidan con las tablas.
+    hibernate:
+      ddl-auto: validate
+    # La sesión de base se cierra al terminar el caso de uso, no al terminar la respuesta HTTP.
+    open-in-view: false
+
+turnos:
+  security:
+    jwt:
+      # Ubicación de la clave privada RSA con la que se firma el JWT de usuario (ADR-0032).
+      private-key-location: ${JWT_PRIVATE_KEY_LOCATION}
+      # Vigencia del token: normal y con rememberMe (ADR-0033).
+      validity: 24h
+      remember-me-validity: 30d
+    # Administrador inicial, creado al arrancar. Los tres vacíos: no hay administrador (ADR-0061).
+    admin:
+      login: ${ADMIN_LOGIN:}
+      password: ${ADMIN_PASSWORD:}
+      email: ${ADMIN_EMAIL:}
+    cors:
+      # Orígenes web que pueden llamar a la API desde un navegador. Vacío: ninguno (ADR-0036).
+      allowed-origins: []

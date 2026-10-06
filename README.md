@@ -6,7 +6,7 @@ Es uno de los tres repositorios de la entrega, junto con `catalogo-service` y `a
 
 ## Estado
 
-Esqueleto del servicio: arranca, se conecta a su base PostgreSQL, ejecuta las migraciones de Flyway y responde los errores en `application/problem+json`. Todavía no tiene endpoints de negocio, usuarios ni integración con la cátedra.
+Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Faltan la disponibilidad, las reservas y la integración con la cátedra.
 
 ## Requisitos
 
@@ -38,10 +38,36 @@ Variables de este repo:
 | `TURNOS_DB_PASSWORD` | Clave de la base. Cambiarla | `cambiar-esta-clave` |
 | `TURNOS_PORT` | Puerto del servicio en la máquina | `8080` |
 | `TURNOS_DB_PORT` | Puerto de PostgreSQL en la máquina | `5434` |
+| `TURNOS_ADMIN_LOGIN` | Login del administrador inicial. Opcional | vacío |
+| `TURNOS_ADMIN_PASSWORD` | Contraseña del administrador inicial, de 4 caracteres a 72 bytes. Opcional | vacío |
+| `TURNOS_ADMIN_EMAIL` | Email del administrador inicial. Opcional | vacío |
 
 Las variables llevan el prefijo `TURNOS_` para no repetir nombres con las del catálogo: al incluir su Compose, una variable repetida en este `.env` pisaría el valor del catálogo. Las del catálogo están documentadas en su README.
 
 El servicio recibe la conexión en `DB_URL`, `DB_USER` y `DB_PASSWORD`; el Compose las arma a partir de las de arriba. No hay valores por defecto: si falta alguna, el servicio no arranca.
+
+### Clave del JWT de usuario
+
+Este servicio firma el JWT de los usuarios con una clave privada RSA, que se lee de `secrets/jwt-private.pem`. La carpeta `secrets/` no se commitea. La clave se genera una sola vez:
+
+```
+mkdir -p secrets
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out secrets/jwt-private.pem
+```
+
+Docker Compose monta esa carpeta en el contenedor en solo lectura. Sin ese archivo, el servicio no arranca.
+
+La clave pública no se guarda aparte: el servicio la calcula a partir de la privada. Cambiar la clave invalida todos los tokens ya emitidos.
+
+### Administrador
+
+El administrador no se registra desde la app: lo crea el propio servicio al arrancar, con las credenciales indicadas en `TURNOS_ADMIN_LOGIN`, `TURNOS_ADMIN_PASSWORD` y `TURNOS_ADMIN_EMAIL`. No hay credenciales de administrador en el repositorio. Después inicia sesión como cualquier usuario, y además de `ROLE_ADMIN` tiene `ROLE_USER`.
+
+- Los tres valores van juntos. Si falta alguno, el servicio no arranca y lo indica en el log.
+- Con los tres vacíos no hay administrador: si existía uno, pierde el rol y queda como usuario común.
+- La configuración manda: al arrancar, el único administrador es la cuenta con ese login **y** esa contraseña.
+- El registro es público, así que alguien podría haber registrado antes ese mismo login. En ese caso la cuenta no recibe el rol, porque no tiene la contraseña configurada, y el servicio lo avisa en el log: hay que elegir otro login.
+- Un token emitido antes de un cambio conserva sus roles hasta que vence.
 
 ## Arranque
 
