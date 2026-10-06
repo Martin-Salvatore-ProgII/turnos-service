@@ -6,7 +6,7 @@ Es uno de los tres repositorios de la entrega, junto con `catalogo-service` y `a
 
 ## Estado
 
-Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Los endpoints todavía no están protegidos, y faltan la disponibilidad, las reservas y la integración con la cátedra.
+Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Faltan la disponibilidad, las reservas y la integración con la cátedra.
 
 ## Requisitos
 
