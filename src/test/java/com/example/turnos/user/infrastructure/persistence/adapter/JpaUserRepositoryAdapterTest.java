@@ -14,6 +14,7 @@ import com.example.turnos.user.infrastructure.persistence.repository.JpaUserRepo
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,6 +32,9 @@ class JpaUserRepositoryAdapterTest {
 	// Solo para forzar el envío del SQL pendiente a la base dentro de la transacción del test.
 	@Autowired
 	private JpaUserRepository jpaUserRepository;
+
+	@Autowired
+	private TestEntityManager entityManager;
 
 	@Test
 	void createPersistsTheUserAndReturnsItWithId() {
@@ -56,6 +60,32 @@ class JpaUserRepositoryAdapterTest {
 		assertThat(created.getCreatedDate()).isNotNull();
 		assertThat(created.getLastModifiedBy()).isEqualTo("system");
 		assertThat(created.getLastModifiedDate()).isNotNull();
+	}
+
+	@Test
+	void findByLoginReadsTheUserBackFromTheDatabase() {
+		User user = newUser("juan", "juan@example.com");
+		adapter.create(user);
+		// Se vacía la memoria de JPA para que la búsqueda lea de verdad de PostgreSQL.
+		entityManager.flush();
+		entityManager.clear();
+
+		User found = adapter.findByLogin("juan").orElseThrow();
+
+		assertThat(found.getExternalPatientId()).isEqualTo(user.getExternalPatientId());
+		assertThat(found.getPasswordHash()).isEqualTo("hashed");
+		assertThat(found.getFirstName()).isEqualTo("Juan");
+		assertThat(found.getLastName()).isEqualTo("Perez");
+		assertThat(found.getEmail()).isEqualTo("juan@example.com");
+		assertThat(found.getLangKey()).isEqualTo("es");
+		assertThat(found.isActivated()).isTrue();
+		assertThat(found.getAuthorities()).containsExactly("ROLE_USER");
+		assertThat(found.getCreatedBy()).isEqualTo("system");
+	}
+
+	@Test
+	void findByLoginReturnsEmptyForUnknownLogin() {
+		assertThat(adapter.findByLogin("nadie")).isEmpty();
 	}
 
 	@Test

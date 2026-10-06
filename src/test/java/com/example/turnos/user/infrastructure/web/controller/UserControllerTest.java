@@ -2,6 +2,7 @@ package com.example.turnos.user.infrastructure.web.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -141,6 +142,48 @@ class UserControllerTest {
 		register(VALID_BODY.replace("\"email\":\"juan@example.com\"", "\"email\":\"no-es-un-email\""))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("secret-1234"))));
+	}
+
+	@Test
+	void validCredentialsReturnTheTokenAsIdToken() throws Exception {
+		when(userService.authenticateUser("juan", "secret-1234", true)).thenReturn("signed-token");
+
+		authenticate("{\"username\":\"juan\",\"password\":\"secret-1234\",\"rememberMe\":true}")
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id_token").value("signed-token"));
+	}
+
+	@Test
+	void rememberMeIsFalseWhenNotSent() throws Exception {
+		when(userService.authenticateUser("juan", "secret-1234", false)).thenReturn("signed-token");
+
+		authenticate("{\"username\":\"juan\",\"password\":\"secret-1234\"}")
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id_token").value("signed-token"));
+	}
+
+	@Test
+	void invalidCredentialsReturnUnauthorizedWithoutCode() throws Exception {
+		when(userService.authenticateUser(any(), any(), anyBoolean()))
+				.thenThrow(new UserException(UserException.Code.INVALID_CREDENTIALS, "Invalid credentials"));
+
+		authenticate("{\"username\":\"juan\",\"password\":\"otra-clave\"}")
+				.andExpect(status().isUnauthorized())
+				.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+				.andExpect(jsonPath("$.code").doesNotExist())
+				.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("otra-clave"))));
+	}
+
+	@Test
+	void authenticationWithoutPasswordReturnsValidationError() throws Exception {
+		authenticate("{\"username\":\"juan\"}")
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value("password"));
+	}
+
+	private ResultActions authenticate(String body) throws Exception {
+		return mockMvc.perform(post("/api/authenticate").contentType(MediaType.APPLICATION_JSON).content(body));
 	}
 
 	private ResultActions register(String body) throws Exception {
