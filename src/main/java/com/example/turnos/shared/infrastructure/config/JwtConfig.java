@@ -16,7 +16,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.converter.RsaKeyConverters;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 /**
@@ -26,6 +28,9 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 @Configuration
 @EnableConfigurationProperties(JwtProperties.class)
 public class JwtConfig {
+
+	// Nombre del claim con los roles. Es parte del contrato con el catálogo, que lo lee al validar.
+	public static final String AUTHORITIES_CLAIM = "auth";
 
 	// La clave privada llega como archivo externo, fuera de Git (ADR-0043).
 	@Bean
@@ -48,6 +53,12 @@ public class JwtConfig {
 	public JwtEncoder jwtEncoder(RSAPrivateKey jwtPrivateKey, RSAPublicKey jwtPublicKey) {
 		RSAKey rsaKey = new RSAKey.Builder(jwtPublicKey).privateKey(jwtPrivateKey).build();
 		return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(rsaKey)));
+	}
+
+	// Valida la firma con la clave pública y rechaza los tokens vencidos.
+	@Bean
+	public JwtDecoder jwtDecoder(RSAPublicKey jwtPublicKey) {
+		return NimbusJwtDecoder.withPublicKey(jwtPublicKey).build();
 	}
 
 }
