@@ -2,6 +2,7 @@ package com.example.turnos.user.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.Optional;
@@ -9,7 +10,9 @@ import java.util.Optional;
 import com.example.turnos.user.application.exception.UserException;
 import com.example.turnos.user.domain.model.User;
 import com.example.turnos.user.domain.ports.in.AuthenticateUserUseCase;
+import com.example.turnos.user.domain.ports.in.ProvisionAdminUserUseCase;
 import com.example.turnos.user.domain.ports.in.RegisterUserUseCase;
+import com.example.turnos.user.domain.ports.in.RevokeAdminRoleUseCase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -24,6 +27,12 @@ class UserServiceTest {
 
 	@Mock
 	private AuthenticateUserUseCase authenticateUserUseCase;
+
+	@Mock
+	private ProvisionAdminUserUseCase provisionAdminUserUseCase;
+
+	@Mock
+	private RevokeAdminRoleUseCase revokeAdminRoleUseCase;
 
 	@InjectMocks
 	private UserService userService;
@@ -52,6 +61,21 @@ class UserServiceTest {
 				.isInstanceOf(UserException.class)
 				.extracting("code")
 				.isEqualTo(UserException.Code.INVALID_CREDENTIALS);
+	}
+
+	@Test
+	void provisionAdminUserReturnsEmptyWithoutThrowing() {
+		User admin = User.builder().login("admin").build();
+		when(provisionAdminUserUseCase.provisionAdminUser(admin, "admin-secret")).thenReturn(Optional.empty());
+
+		assertThat(userService.provisionAdminUser(admin, "admin-secret")).isEmpty();
+	}
+
+	@Test
+	void revokeAdminRoleDelegatesToTheUseCase() {
+		userService.revokeAdminRole();
+
+		verify(revokeAdminRoleUseCase).revokeAdminRole();
 	}
 
 }

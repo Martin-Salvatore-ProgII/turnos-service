@@ -89,6 +89,43 @@ class JpaUserRepositoryAdapterTest {
 	}
 
 	@Test
+	void updateChangesTheAuthoritiesAndKeepsTheRestOfTheUser() {
+		User created = adapter.create(newUser("ana", "ana@example.com"));
+		entityManager.flush();
+		entityManager.clear();
+
+		created.setAuthorities(Set.of("ROLE_USER", "ROLE_ADMIN"));
+		adapter.update(created.getId(), created);
+		entityManager.flush();
+		entityManager.clear();
+
+		User found = adapter.findByLogin("ana").orElseThrow();
+		assertThat(found.getAuthorities()).containsExactlyInAnyOrder("ROLE_USER", "ROLE_ADMIN");
+		assertThat(found.getPasswordHash()).isEqualTo("hashed");
+		assertThat(found.getExternalPatientId()).isEqualTo(created.getExternalPatientId());
+		assertThat(found.getCreatedBy()).isEqualTo("system");
+		assertThat(found.getCreatedDate()).isNotNull();
+	}
+
+	@Test
+	void updateReturnsEmptyForUnknownId() {
+		assertThat(adapter.update(999L, newUser("nadie", "nadie@example.com"))).isEmpty();
+	}
+
+	@Test
+	void findAllByAuthorityReturnsOnlyUsersWithThatRole() {
+		adapter.create(newUser("juan", "juan@example.com"));
+		User ana = newUser("ana", "ana@example.com");
+		ana.setAuthorities(Set.of("ROLE_USER", "ROLE_ADMIN"));
+		adapter.create(ana);
+		entityManager.flush();
+		entityManager.clear();
+
+		assertThat(adapter.findAllByAuthority("ROLE_ADMIN")).extracting(User::getLogin).containsExactly("ana");
+		assertThat(adapter.findAllByAuthority("ROLE_USER")).extracting(User::getLogin).containsExactlyInAnyOrder("juan", "ana");
+	}
+
+	@Test
 	void existsByLoginAndEmailFindOnlyStoredValues() {
 		adapter.create(newUser("juan", "juan@example.com"));
 
