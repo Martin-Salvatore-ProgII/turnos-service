@@ -11,3 +11,12 @@ spring:
       ddl-auto: validate
     # La sesión de base se cierra al terminar el caso de uso, no al terminar la respuesta HTTP.
     open-in-view: false
+
+turnos:
+  security:
+    jwt:
+      # Ubicación de la clave privada RSA con la que se firma el JWT de usuario (ADR-0032).
+      private-key-location: ${JWT_PRIVATE_KEY_LOCATION}
+      # Vigencia del token: normal y con rememberMe (ADR-0033).
+      validity: 24h
+      remember-me-validity: 30d
