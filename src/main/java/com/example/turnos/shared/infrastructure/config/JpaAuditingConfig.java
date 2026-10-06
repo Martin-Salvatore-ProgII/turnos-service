@@ -6,6 +6,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * Activa la auditoría de Spring Data: al guardar una entity, completa sola quién y cuándo la creó
@@ -17,11 +20,15 @@ public class JpaAuditingConfig {
 
 	private static final String SYSTEM = "system";
 
-	// "Quién" hizo el cambio. Por ahora siempre es el sistema: quien se registra todavía no tiene
-	// cuenta. Cuando haya usuarios autenticados, acá se devuelve el login del que hace el pedido.
+	// "Quién" hizo el cambio: el login del usuario autenticado. Cuando no hay ninguno, como en
+	// el registro (quien se registra todavía no tiene cuenta), es el sistema (ADR-0058).
 	@Bean
 	public AuditorAware<String> auditorAware() {
-		return () -> Optional.of(SYSTEM);
+		return () -> Optional.ofNullable(SecurityContextHolder.getContext().getAuthentication())
+				.filter(Authentication::isAuthenticated)
+				.filter(authentication -> !(authentication instanceof AnonymousAuthenticationToken))
+				.map(Authentication::getName)
+				.or(() -> Optional.of(SYSTEM));
 	}
 
 }
