@@ -44,11 +44,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	}
 
 	// Un login o un email repetidos son errores del pedido: 400 con el código funcional del contrato.
+	// Las credenciales incorrectas son un 401 sin código, como define el contrato para ese estado.
 	@ExceptionHandler(UserException.class)
 	public ResponseEntity<Object> handleUserException(UserException ex, WebRequest request) {
-		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
-		problem.setProperty("code", ex.getCode().name());
-		return handleExceptionInternal(ex, problem, new HttpHeaders(), HttpStatus.BAD_REQUEST, request);
+		boolean invalidCredentials = ex.getCode() == UserException.Code.INVALID_CREDENTIALS;
+		HttpStatus status = invalidCredentials ? HttpStatus.UNAUTHORIZED : HttpStatus.BAD_REQUEST;
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, ex.getMessage());
+		if (!invalidCredentials) {
+			problem.setProperty("code", ex.getCode().name());
+		}
+		return handleExceptionInternal(ex, problem, new HttpHeaders(), status, request);
 	}
 
 	@ExceptionHandler(Exception.class)
