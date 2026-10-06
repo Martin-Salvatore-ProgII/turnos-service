@@ -1,5 +1,6 @@
 package com.example.turnos.user.infrastructure.persistence.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import com.example.turnos.user.infrastructure.persistence.entity.UserEntity;
@@ -10,6 +11,8 @@ import org.springframework.stereotype.Repository;
 public interface JpaUserRepository extends JpaRepository<UserEntity, Long> {
 
 	Optional<UserEntity> findByLogin(String login);
+
+	List<UserEntity> findAllByAuthoritiesContaining(String authority);
 
 	boolean existsByLogin(String login);
 

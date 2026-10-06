@@ -20,6 +20,11 @@ turnos:
       # Vigencia del token: normal y con rememberMe (ADR-0033).
       validity: 24h
       remember-me-validity: 30d
+    # Administrador inicial, creado al arrancar. Los tres vacíos: no hay administrador (ADR-0061).
+    admin:
+      login: ${ADMIN_LOGIN:}
+      password: ${ADMIN_PASSWORD:}
+      email: ${ADMIN_EMAIL:}
     cors:
       # Orígenes web que pueden llamar a la API desde un navegador. Vacío: ninguno (ADR-0036).
       allowed-origins: []

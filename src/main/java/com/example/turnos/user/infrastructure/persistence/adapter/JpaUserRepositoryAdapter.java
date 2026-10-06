@@ -1,5 +1,6 @@
 package com.example.turnos.user.infrastructure.persistence.adapter;
 
+import java.util.List;
 import java.util.Optional;
 
 import com.example.turnos.user.domain.model.User;
@@ -27,6 +28,24 @@ public class JpaUserRepositoryAdapter implements UserRepository {
 	public Optional<User> findByLogin(String login) {
 		return jpaUserRepository.findByLogin(login)
 				.map(userMapper::toDomainModel);
+	}
+
+	@Override
+	public List<User> findAllByAuthority(String authority) {
+		return jpaUserRepository.findAllByAuthoritiesContaining(authority).stream()
+				.map(userMapper::toDomainModel)
+				.toList();
+	}
+
+	@Override
+	public Optional<User> update(Long id, User user) {
+		if (jpaUserRepository.existsById(id)) {
+			UserEntity userEntity = userMapper.toEntity(user);
+			userEntity.setId(id);
+			UserEntity updatedEntity = jpaUserRepository.save(userEntity);
+			return Optional.of(userMapper.toDomainModel(updatedEntity));
+		}
+		return Optional.empty();
 	}
 
 	@Override
