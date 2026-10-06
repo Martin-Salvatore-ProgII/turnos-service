@@ -2,6 +2,8 @@ package com.example.turnos.user.infrastructure.web.controller;
 
 import com.example.turnos.user.application.service.UserService;
 import com.example.turnos.user.domain.model.User;
+import com.example.turnos.user.infrastructure.web.dto.LoginRequest;
+import com.example.turnos.user.infrastructure.web.dto.TokenResponse;
 import com.example.turnos.user.infrastructure.web.dto.UserRequest;
 import com.example.turnos.user.infrastructure.web.mapper.UserDtoMapper;
 import jakarta.validation.Valid;
@@ -27,6 +29,13 @@ public class UserController {
 		User user = userDtoMapper.toDomain(userRequest);
 		userService.registerUser(user, userRequest.getPassword());
 		return new ResponseEntity<>(HttpStatus.CREATED);
+	}
+
+	@PostMapping("/authenticate")
+	public ResponseEntity<TokenResponse> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
+		boolean rememberMe = Boolean.TRUE.equals(loginRequest.getRememberMe());
+		String token = userService.authenticateUser(loginRequest.getUsername(), loginRequest.getPassword(), rememberMe);
+		return ResponseEntity.ok(userDtoMapper.toResponse(token));
 	}
 
 }
