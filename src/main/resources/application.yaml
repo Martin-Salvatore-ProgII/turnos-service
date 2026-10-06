@@ -5,3 +5,9 @@ spring:
     url: ${DB_URL}
     username: ${DB_USER}
     password: ${DB_PASSWORD}
+  jpa:
+    # El esquema lo define Flyway. Hibernate solo verifica que las entities coincidan con las tablas.
+    hibernate:
+      ddl-auto: validate
+    # La sesión de base se cierra al terminar el caso de uso, no al terminar la respuesta HTTP.
+    open-in-view: false
