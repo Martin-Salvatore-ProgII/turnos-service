@@ -18,8 +18,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 // Sin los filtros de seguridad: acá se prueba el manejador de errores. Las reglas de acceso se prueban en SecurityConfigTest.
@@ -46,12 +48,31 @@ class GlobalExceptionHandlerTest {
 				.andExpect(jsonPath("$.fieldErrors[0].message").value("Name is mandatory"));
 	}
 
+	// El contrato no exime de code a ningún 400: lo que arma Spring también es VALIDATION_ERROR.
 	@Test
-	void malformedJsonReturnsProblemWithoutCode() throws Exception {
+	void malformedJsonReturnsValidationError() throws Exception {
 		mockMvc.perform(post("/test/items").contentType(MediaType.APPLICATION_JSON).content("{"))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
-				.andExpect(jsonPath("$.code").doesNotExist());
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+	}
+
+	@Test
+	void invalidPathVariableReturnsValidationErrorWithTheField() throws Exception {
+		mockMvc.perform(get("/test/items/abc"))
+				.andExpect(status().isBadRequest())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.path").value("/test/items/abc"))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value("id"))
+				.andExpect(jsonPath("$.fieldErrors[0].objectName").doesNotExist());
+	}
+
+	@Test
+	void missingRequiredParameterReturnsValidationError() throws Exception {
+		mockMvc.perform(get("/test/required"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 	}
 
 	@Test
@@ -89,6 +110,14 @@ class GlobalExceptionHandlerTest {
 
 		@PostMapping("/test/items")
 		void create(@Valid @RequestBody TestRequest request) {
+		}
+
+		@GetMapping("/test/items/{id}")
+		void find(@PathVariable Long id) {
+		}
+
+		@GetMapping("/test/required")
+		void required(@RequestParam String value) {
 		}
 
 		@GetMapping("/test/failure")
