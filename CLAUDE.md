@@ -24,19 +24,19 @@ Las pruebas necesitan Docker en ejecución (PostgreSQL real y la cátedra simula
 
 - **Feature `user`:** registro (`POST /api/register`), inicio de sesión (`POST /api/authenticate`) y el administrador inicial, creado al arrancar. Es la feature de referencia para las siguientes.
 - **Feature `catalog`:** la agenda vigente de un profesional, pedida al catálogo (`CatalogClientPort` y `CatalogServiceAdapter`). No tiene casos de uso: la disponibilidad y la reserva usan su puerto de salida (ADR-0062).
-- **Feature `availability`:** por ahora, el puerto de ocupaciones de la cátedra (`OccupancyPort`) y su adaptador (`CatedraOccupancyAdapter`), que pide un solo día (ADR-0015). Si falla, `503 INTEGRATION_UNAVAILABLE`.
+- **Feature `availability`:** el cálculo de la disponibilidad de CU-03 (`GetAvailabilityUseCaseImpl` y la fachada `AvailabilityService`), la regla que corta un horario en slots (`ScheduleSlots`, en el dominio porque la reserva la va a reusar) y el puerto de ocupaciones con su adaptador (`CatedraOccupancyAdapter`). "Hoy" y "ahora" son los de `AgendaZone` (ADR-0016), con el `Clock` inyectado. Una ocupación bloquea solo el slot que empieza a su hora.
 - **`shared/infrastructure/config`:** `JwtConfig` (claves, firma y validación), `SecurityConfig` (reglas de acceso y CORS), `JpaAuditingConfig`, y la integración con la cátedra: `CatedraRestClientConfig` (cliente con el JWT técnico y timeouts) y `CatedraIntegrationConfig` (pide la integración al arrancar; sin ella no arranca, ADR-0005). `CatalogRestClientConfig` arma el cliente del catálogo, que reenvía el JWT del usuario tomado del `SecurityContext` (ADR-0034).
 - **`shared/infrastructure/rest`:** `RemoteReadRetry`, el reintento de toda lectura a la cátedra o al catálogo, y `CatedraReadExecutor`, que le suma los errores propios de la cátedra (ADR-0029, ADR-0063).
 - **`shared/infrastructure/web`:** `GlobalExceptionHandler` y la validación `@MaxBytes`.
 - **Migración `V1`:** tablas `app_user`, `authority` y `app_user_authority`.
 
-Todavía no hay: el cálculo y el endpoint de disponibilidad, reservas ni Kafka. Tampoco HTTPS (ADR-0035).
+Todavía no hay: el endpoint de disponibilidad, reservas ni Kafka. Tampoco HTTPS (ADR-0035).
 
 ## Lo propio de este servicio
 
 - **Este servicio emite el JWT de usuario** y también lo valida. Recibe solo la clave privada; la pública se calcula a partir de ella. El contenido del token (`sub` con el login, `auth` con la lista de roles) es un contrato con el catálogo: está en `docs/arq/seguridad.md` y no se cambia sin cambiarlo allá.
 - **El hasheo de contraseñas y la emisión del token son puertos de salida** (`PasswordHasherPort`, `TokenIssuerPort`). Los casos de uso no importan Spring Security.
-- **Cómo informa un rechazo un caso de uso** (ADR-0059): con un solo motivo, devuelve vacío y la fachada lanza la excepción; con varios, lanza `UserException` con su código. `GlobalExceptionHandler` traduce el código a HTTP.
+- **Cómo informa un rechazo un caso de uso** (ADR-0059): con un solo motivo, devuelve vacío y la fachada lanza la excepción; con varios, lanza la excepción de la feature con su código (`UserException`, `AvailabilityException`). `GlobalExceptionHandler` traduce el código a HTTP.
 - **Las contraseñas tienen un máximo de 72 bytes** (ADR-0057), validado con `@MaxBytes`. Los DTO que llevan una contraseña no tienen `@ToString`.
 - **Los campos de auditoría los completa Spring Data** (ADR-0058), no los casos de uso. Sin usuario autenticado, el autor es `system`.
 - **El administrador no se registra desde la app** (ADR-0061): lo crea `AdminUserInitializer` al arrancar, y solo es administrador la cuenta con el login y la contraseña configurados.
@@ -48,9 +48,9 @@ Todavía no hay: el cálculo y el endpoint de disponibilidad, reservas ni Kafka.
 
 El detalle está en `docs/guia-git.md`. En resumen:
 
-- **El agente** crea la rama de la issue, vinculada a ella: `gh issue develop <N> --base develop --name <tipo>/<N>-<descripcion> --checkout`. Escribe los archivos y corre `./gradlew build`.
+- **El agente** crea la rama de la issue solo en local, desde `develop` actualizada: `git checkout -b <tipo>/<N>-<descripcion>`. No escribe nada en GitHub. Escribe los archivos y corre `./gradlew build`.
 - **El alumno** revisa, commitea, pushea, abre el pull request a `develop` y mergea. El agente no commitea, no pushea commits ni mergea, y no crea ni cierra issues.
-- Al terminar, el agente entrega un bloque de comandos listo para pegar (`git add` por commit, `git commit -m`, `git push`, `gh pr create --base develop`, `gh pr merge --merge --delete-branch`, `gh issue close`). Mensajes en español, con Conventional Commits, sin atribuciones a herramientas.
+- Al terminar, el agente entrega un bloque de comandos listo para pegar (`git add` por commit, `git commit -m`, `git push`, `gh pr create --base develop`, `gh pr merge --merge --delete-branch`, `gh issue close`). Mensajes en español, con Conventional Commits, sin atribuciones a herramientas. Cada comando en una sola línea, sin `\` de continuación.
 - Antes de crear la rama de la issue siguiente, verificar con `git fetch` que el pull request anterior ya está en `origin/develop`.
 - Al cerrar la última issue de una milestone se crea la rama `milestone/<n>-<nombre>` y el pull request a `main` sale de ahí, con revisión del profesor. Nunca de `develop`.
 - Una decisión que afecta al otro servicio se propone para `docs` (ADR), con permiso del alumno antes de escribirla.

@@ -2,6 +2,7 @@ package com.example.turnos.shared.infrastructure.web.advice;
 
 import java.util.List;
 
+import com.example.turnos.availability.application.exception.AvailabilityException;
 import com.example.turnos.availability.application.exception.IntegrationUnavailableException;
 import com.example.turnos.catalog.application.exception.CatalogTokenRejectedException;
 import com.example.turnos.catalog.application.exception.CatalogUnavailableException;
@@ -68,6 +69,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
 		problem.setProperty("code", CATALOG_UNAVAILABLE);
 		return handleExceptionInternal(ex, problem, new HttpHeaders(), HttpStatus.SERVICE_UNAVAILABLE, request);
+	}
+
+	// Un profesional inexistente es 404, como en la cátedra y el catálogo (REF §13.1). La fecha fuera de
+	// rango y el profesional deshabilitado son errores del pedido: 400 con su código (contratos.md).
+	@ExceptionHandler(AvailabilityException.class)
+	public ResponseEntity<Object> handleAvailabilityException(AvailabilityException ex, WebRequest request) {
+		HttpStatus status = ex.getCode() == AvailabilityException.Code.PROFESSIONAL_NOT_FOUND
+				? HttpStatus.NOT_FOUND
+				: HttpStatus.BAD_REQUEST;
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, ex.getMessage());
+		problem.setProperty("code", ex.getCode().name());
+		return handleExceptionInternal(ex, problem, new HttpHeaders(), status, request);
 	}
 
 	// Sin las ocupaciones de la cátedra no se muestran slots (CU-03 4a).

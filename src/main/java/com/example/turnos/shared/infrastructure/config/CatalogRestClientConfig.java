@@ -36,8 +36,8 @@ public class CatalogRestClientConfig {
 	}
 
 	// Todo pedido al catálogo lleva el mismo JWT de usuario que llegó a turnos (ADR-0034). Se toma
-	// del pedido en curso, ya validado por Spring Security, y no viaja por las firmas del dominio:
-	// cómo se autentica turnos ante el catálogo es un detalle de transporte.
+	// del pedido en curso, ya validado por Spring Security, y no viaja por las firmas del dominio
+	// (ADR-0066): por eso el catálogo solo se puede llamar dentro de un pedido del usuario.
 	static ClientHttpRequestInterceptor forwardUserToken() {
 		return (request, body, execution) -> {
 			Authentication authentication = SecurityContextHolder.getContext().getAuthentication();

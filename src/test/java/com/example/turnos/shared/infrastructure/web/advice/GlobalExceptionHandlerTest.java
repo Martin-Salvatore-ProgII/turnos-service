@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.example.turnos.availability.application.exception.AvailabilityException;
 import com.example.turnos.availability.application.exception.IntegrationUnavailableException;
 import com.example.turnos.catalog.application.exception.CatalogTokenRejectedException;
 import com.example.turnos.catalog.application.exception.CatalogUnavailableException;
@@ -107,6 +108,29 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	void dateOutOfRangeReturnsBadRequestWithItsCode() throws Exception {
+		mockMvc.perform(get("/test/availability/DATE_OUT_OF_RANGE"))
+				.andExpect(status().isBadRequest())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andExpect(jsonPath("$.code").value("DATE_OUT_OF_RANGE"));
+	}
+
+	@Test
+	void disabledProfessionalReturnsBadRequestWithItsCode() throws Exception {
+		mockMvc.perform(get("/test/availability/PROFESSIONAL_DISABLED"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("PROFESSIONAL_DISABLED"));
+	}
+
+	@Test
+	void missingProfessionalReturnsNotFoundWithItsCode() throws Exception {
+		mockMvc.perform(get("/test/availability/PROFESSIONAL_NOT_FOUND"))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("PROFESSIONAL_NOT_FOUND"))
+				.andExpect(jsonPath("$.path").value("/test/availability/PROFESSIONAL_NOT_FOUND"));
+	}
+
+	@Test
 	void unavailableIntegrationReturnsIntegrationUnavailable() throws Exception {
 		mockMvc.perform(get("/test/integration-unavailable"))
 				.andExpect(status().isServiceUnavailable())
@@ -155,6 +179,11 @@ class GlobalExceptionHandlerTest {
 		@GetMapping("/test/catalog-unavailable")
 		void catalogUnavailable() {
 			throw new CatalogUnavailableException("Catalog service unavailable (HTTP 503)");
+		}
+
+		@GetMapping("/test/availability/{code}")
+		void availabilityRejected(@PathVariable AvailabilityException.Code code) {
+			throw new AvailabilityException(code, "rejected");
 		}
 
 		@GetMapping("/test/integration-unavailable")
