@@ -18,16 +18,17 @@ Guía para agentes de IA que trabajan en este repositorio. Es corta a propósito
 | Levantar el sistema completo en Docker | `docker compose up --build` |
 | Levantar solo este servicio y su base | `docker compose up --build turnos-service` |
 
-Las pruebas necesitan Docker en ejecución (PostgreSQL real con Testcontainers). El README explica la configuración (`.env`, clave del JWT, administrador).
+Las pruebas necesitan Docker en ejecución (PostgreSQL real y la cátedra simulada con WireMock, con Testcontainers). Toda prueba con `@SpringBootTest` importa `TestCatedraConfiguration`: sin la integración, el contexto no arranca. El README explica la configuración (`.env`, clave del JWT, administrador).
 
 ## Qué hay construido
 
 - **Feature `user`:** registro (`POST /api/register`), inicio de sesión (`POST /api/authenticate`) y el administrador inicial, creado al arrancar. Es la feature de referencia para las siguientes.
-- **`shared/infrastructure/config`:** `JwtConfig` (claves, firma y validación), `SecurityConfig` (reglas de acceso y CORS), `JpaAuditingConfig`.
+- **`shared/infrastructure/config`:** `JwtConfig` (claves, firma y validación), `SecurityConfig` (reglas de acceso y CORS), `JpaAuditingConfig`, y la integración con la cátedra: `CatedraRestClientConfig` (cliente con el JWT técnico y timeouts) y `CatedraIntegrationConfig` (pide la integración al arrancar; sin ella no arranca, ADR-0005).
+- **`shared/infrastructure/rest`:** `CatedraReadExecutor`, la lectura a la cátedra con un reintento y mensajes sin su dirección. Toda lectura a la cátedra pasa por acá (ADR-0063).
 - **`shared/infrastructure/web`:** `GlobalExceptionHandler` y la validación `@MaxBytes`.
 - **Migración `V1`:** tablas `app_user`, `authority` y `app_user_authority`.
 
-Todavía no hay: disponibilidad, reservas, integración con la cátedra (REST, Kafka) ni el cliente del catálogo. Tampoco HTTPS (ADR-0035).
+Todavía no hay: disponibilidad, reservas, Kafka ni el cliente del catálogo. Tampoco HTTPS (ADR-0035).
 
 ## Lo propio de este servicio
 
@@ -80,7 +81,7 @@ Spring Boot 4, Spring Security 7 y Jackson 3 cambiaron cosas respecto de version
 **Cómo se arma cada tipo de prueba.**
 
 - **Controller:** `@WebMvcTest` con `@AutoConfigureMockMvc(addFilters = false)`. Sin eso, la seguridad responde 401 antes de llegar al controller. Las reglas de acceso se prueban aparte.
-- **Seguridad y recorridos completos:** `@SpringBootTest` + `@AutoConfigureMockMvc`, importando `TestcontainersConfiguration` y `TestJwtKeysConfiguration`. Sin la segunda, el contexto no arranca porque falta la clave del JWT.
+- **Seguridad y recorridos completos:** `@SpringBootTest` + `@AutoConfigureMockMvc`, importando `TestcontainersConfiguration`, `TestJwtKeysConfiguration` y `TestCatedraConfiguration`. Sin las dos últimas, el contexto no arranca: falta la clave del JWT o la integración con la cátedra.
 - **Adaptador de persistencia:** `@DataJpaTest` + `@AutoConfigureTestDatabase(replace = NONE)` + `@Import` de `TestcontainersConfiguration`, el adaptador y su mapper. Para leer de verdad de PostgreSQL hay que hacer `flush()` y `clear()` antes: sin eso JPA responde desde memoria, y los errores de restricciones de una colección no aparecen.
 - **Casos de uso y fachada:** JUnit y Mockito, sin Spring.
 

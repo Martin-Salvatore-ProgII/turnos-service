@@ -6,12 +6,13 @@ Es uno de los tres repositorios de la entrega, junto con `catalogo-service` y `a
 
 ## Estado
 
-Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Faltan la disponibilidad, las reservas y la integración con la cátedra.
+Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Al arrancar obtiene de la cátedra la configuración de la integración; sin ella no arranca. Faltan la disponibilidad y las reservas.
 
 ## Requisitos
 
 - **Docker** con Docker Compose. Alcanza para levantar el sistema y para correr las pruebas.
 - **Java 25**, solo para compilar o correr las pruebas fuera de Docker. Gradle no hace falta instalarlo: se usa el wrapper (`./gradlew`).
+- **Acceso a la red de la cátedra**, para levantar el servicio: al arrancar le pide la configuración de la integración, y sin respuesta no arranca. Las pruebas no lo necesitan.
 - **`catalogo-service` clonado al lado de este repo.** El `compose.yaml` de este repo levanta el sistema completo e incluye al del catálogo:
 
 ```
@@ -38,6 +39,8 @@ Variables de este repo:
 | `TURNOS_DB_PASSWORD` | Clave de la base. Cambiarla | `cambiar-esta-clave` |
 | `TURNOS_PORT` | Puerto del servicio en la máquina | `8080` |
 | `TURNOS_DB_PORT` | Puerto de PostgreSQL en la máquina | `5434` |
+| `TURNOS_CATEDRA_API_URL` | URL base de la API de la cátedra. La misma que en el catálogo | La que indica la cátedra |
+| `TURNOS_CATEDRA_TECHNICAL_TOKEN` | JWT técnico de la cuenta del proyecto ante la cátedra. Es un secreto. El mismo que en el catálogo | El `id_token` del registro de la cuenta técnica |
 | `TURNOS_ADMIN_LOGIN` | Login del administrador inicial. Opcional | vacío |
 | `TURNOS_ADMIN_PASSWORD` | Contraseña del administrador inicial, de 4 caracteres a 72 bytes. Opcional | vacío |
 | `TURNOS_ADMIN_EMAIL` | Email del administrador inicial. Opcional | vacío |
@@ -45,6 +48,12 @@ Variables de este repo:
 Las variables llevan el prefijo `TURNOS_` para no repetir nombres con las del catálogo: al incluir su Compose, una variable repetida en este `.env` pisaría el valor del catálogo. Las del catálogo están documentadas en su README.
 
 El servicio recibe la conexión en `DB_URL`, `DB_USER` y `DB_PASSWORD`; el Compose las arma a partir de las de arriba. No hay valores por defecto: si falta alguna, el servicio no arranca.
+
+### Integración con la cátedra
+
+En el `.env` van solo la URL base y el JWT técnico. Kafka y sus topics no se configuran: al arrancar, el servicio los pide con `GET /api/student/integration` y los guarda solo en memoria (ADR-0005). Si la cátedra no responde (con un reintento), rechaza el JWT o la integración no está `PROVISIONED`, el servicio no arranca y lo informa en el log, sin mostrar valores.
+
+Los timeouts hacia la cátedra tienen un valor inicial de 2 segundos para conectar y 5 para la respuesta (ADR-0029). Se pueden cambiar con `TURNOS_CATEDRA_CONNECT_TIMEOUT` y `TURNOS_CATEDRA_READ_TIMEOUT` (por ejemplo, `3s`).
 
 ### Clave del JWT de usuario
 
@@ -106,7 +115,7 @@ Levanta `turnos-service` y `turnos-db`, sin el catálogo. Igual hace falta tener
 
 ### Sin Docker Compose
 
-Para probar el servicio a mano sin configurar nada, con una base descartable:
+Para probar el servicio a mano sin configurar nada, con una base descartable y una cátedra simulada (no hace falta la red de la cátedra):
 
 ```
 ./gradlew bootTestRun
@@ -120,7 +129,7 @@ Necesita Docker en ejecución; los datos se pierden al detenerlo.
 ./gradlew test
 ```
 
-Las pruebas usan PostgreSQL real con Testcontainers, así que **Docker tiene que estar corriendo**. No hay que levantar nada a mano ni definir variables. El detalle de qué prueba cada cosa está en [`src/test/README.md`](src/test/README.md).
+Las pruebas usan PostgreSQL real y una cátedra simulada con WireMock, las dos en contenedores de Testcontainers, así que **Docker tiene que estar corriendo**. Ninguna prueba habla con la cátedra real. No hay que levantar nada a mano ni definir variables. El detalle de qué prueba cada cosa está en [`src/test/README.md`](src/test/README.md).
 
 Las mismas pruebas corren en GitHub Actions en cada pull request hacia `develop` o `main` (`.github/workflows/ci.yml`).
 
@@ -131,5 +140,18 @@ El código sigue la arquitectura hexagonal de la cátedra: un paquete por featur
 ```
 com.example.turnos
 ├── user/          feature de usuarios finales
-└── shared/        configuración, seguridad y manejo de errores comunes
+└── shared/        configuración (cliente e integración de la cátedra, seguridad) y manejo de errores comunes
 ```
+
+### Piezas de `shared` y quién las usa
+
+Lo que sirve a más de una feature se lleva a `shared` en cuanto aparece el segundo uso (ADR-0063).
+
+| Pieza | Qué hace | La usan |
+| --- | --- | --- |
+| `config/CatedraRestClientConfig` | Cliente HTTP de la cátedra, con el JWT técnico y los timeouts | Integración al arrancar |
+| `rest/CatedraReadExecutor` | Lectura a la cátedra con un reintento (ADR-0029) y mensajes de falla sin su dirección | Integración al arrancar |
+| `config/CatedraIntegrationConfig` | Pide la integración al arrancar; sin ella, el servicio no arranca (ADR-0005) | Kafka, desde la M5 |
+| `config/JwtConfig`, `config/SecurityConfig` | Emisión y validación del JWT de usuario, y reglas de acceso | Todos los endpoints |
+| `web/advice/GlobalExceptionHandler` | Errores `problem+json`; todo 400 sin código propio es `VALIDATION_ERROR` | Todos los endpoints |
+| `web/validation/MaxBytes` | Límite de largo en bytes de un campo de texto (ADR-0057) | `user` (contraseña) |
