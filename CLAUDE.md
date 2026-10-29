@@ -24,12 +24,13 @@ Las pruebas necesitan Docker en ejecución (PostgreSQL real y la cátedra simula
 
 - **Feature `user`:** registro (`POST /api/register`), inicio de sesión (`POST /api/authenticate`) y el administrador inicial, creado al arrancar. Es la feature de referencia para las siguientes.
 - **Feature `catalog`:** la agenda vigente de un profesional, pedida al catálogo (`CatalogClientPort` y `CatalogServiceAdapter`). No tiene casos de uso: la disponibilidad y la reserva usan su puerto de salida (ADR-0062).
+- **Feature `availability`:** por ahora, el puerto de ocupaciones de la cátedra (`OccupancyPort`) y su adaptador (`CatedraOccupancyAdapter`), que pide un solo día (ADR-0015). Si falla, `503 INTEGRATION_UNAVAILABLE`.
 - **`shared/infrastructure/config`:** `JwtConfig` (claves, firma y validación), `SecurityConfig` (reglas de acceso y CORS), `JpaAuditingConfig`, y la integración con la cátedra: `CatedraRestClientConfig` (cliente con el JWT técnico y timeouts) y `CatedraIntegrationConfig` (pide la integración al arrancar; sin ella no arranca, ADR-0005). `CatalogRestClientConfig` arma el cliente del catálogo, que reenvía el JWT del usuario tomado del `SecurityContext` (ADR-0034).
 - **`shared/infrastructure/rest`:** `RemoteReadRetry`, el reintento de toda lectura a la cátedra o al catálogo, y `CatedraReadExecutor`, que le suma los errores propios de la cátedra (ADR-0029, ADR-0063).
 - **`shared/infrastructure/web`:** `GlobalExceptionHandler` y la validación `@MaxBytes`.
 - **Migración `V1`:** tablas `app_user`, `authority` y `app_user_authority`.
 
-Todavía no hay: disponibilidad, reservas ni Kafka. Tampoco HTTPS (ADR-0035).
+Todavía no hay: el cálculo y el endpoint de disponibilidad, reservas ni Kafka. Tampoco HTTPS (ADR-0035).
 
 ## Lo propio de este servicio
 
