@@ -1,0 +1,27 @@
+{
+	"id": 204,
+	"firstName": "Laura",
+	"lastName": "Medina",
+	"category": {
+		"id": 102,
+		"name": "Pediatria"
+	},
+	"enabled": true,
+	"weeklySchedules": [
+		{
+			"id": 306,
+			"dayOfWeek": "MONDAY",
+			"startTime": "11:00:00",
+			"endTime": "15:00:00",
+			"slotDurationMinutes": 20
+		},
+		{
+			"id": 307,
+			"dayOfWeek": "FRIDAY",
+			"startTime": "12:00:00",
+			"endTime": "16:00:00",
+			"slotDurationMinutes": 20
+		}
+	],
+	"catalogVersion": 1
+}
