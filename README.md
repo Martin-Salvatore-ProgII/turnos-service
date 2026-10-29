@@ -6,7 +6,7 @@ Es uno de los tres repositorios de la entrega, junto con `catalogo-service` y `a
 
 ## Estado
 
-Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Al arrancar obtiene de la cátedra la configuración de la integración; sin ella no arranca. Ya tiene el cliente del catálogo, que pide la agenda vigente de un profesional reenviando el JWT del usuario; todavía no lo usa ningún endpoint. Faltan la disponibilidad y las reservas.
+Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Al arrancar obtiene de la cátedra la configuración de la integración; sin ella no arranca. Ya tiene los dos clientes que usa la disponibilidad: el del catálogo, que pide la agenda vigente de un profesional reenviando el JWT del usuario, y el de ocupaciones de la cátedra; todavía no los usa ningún endpoint. Faltan la disponibilidad y las reservas.
 
 ## Requisitos
 
@@ -54,6 +54,10 @@ El servicio recibe la conexión en `DB_URL`, `DB_USER` y `DB_PASSWORD`; el Compo
 En el `.env` van solo la URL base y el JWT técnico. Kafka y sus topics no se configuran: al arrancar, el servicio los pide con `GET /api/student/integration` y los guarda solo en memoria (ADR-0005). Si la cátedra no responde (con un reintento), rechaza el JWT o la integración no está `PROVISIONED`, el servicio no arranca y lo informa en el log, sin mostrar valores.
 
 Los timeouts hacia la cátedra tienen un valor inicial de 2 segundos para conectar y 5 para la respuesta (ADR-0029). Se pueden cambiar con `TURNOS_CATEDRA_CONNECT_TIMEOUT` y `TURNOS_CATEDRA_READ_TIMEOUT` (por ejemplo, `3s`).
+
+### Ocupaciones de la cátedra
+
+Para armar la disponibilidad, turnos le pide a la cátedra las ocupaciones del profesional para la fecha consultada, un solo día por pedido (REF §8, ADR-0015). Si la cátedra no responde (con un reintento) o responde algo inesperado, turnos responde `503 INTEGRATION_UNAVAILABLE` y no muestra ningún slot.
 
 ### Servicio de catálogo
 
@@ -145,6 +149,7 @@ El código sigue la arquitectura hexagonal de la cátedra: un paquete por featur
 com.example.turnos
 ├── user/          feature de usuarios finales
 ├── catalog/       la agenda vigente pedida al servicio de catálogo (sin casos de uso: la usan otras features por su puerto)
+├── availability/  disponibilidad de turnos (por ahora, el cliente de ocupaciones de la cátedra)
 └── shared/        configuración (cliente e integración de la cátedra, seguridad) y manejo de errores comunes
 ```
 
@@ -154,11 +159,11 @@ Lo que sirve a más de una feature se lleva a `shared` en cuanto aparece el segu
 
 | Pieza | Qué hace | La usan |
 | --- | --- | --- |
-| `config/CatedraRestClientConfig` | Cliente HTTP de la cátedra, con el JWT técnico y los timeouts | Integración al arrancar |
+| `config/CatedraRestClientConfig` | Cliente HTTP de la cátedra, con el JWT técnico y los timeouts | Integración al arrancar, `availability` (ocupaciones) |
 | `rest/RemoteReadRetry` | El reintento de toda lectura a un servicio externo: un intento más si no responde o falla de su lado (ADR-0029), con mensajes sin su dirección | `CatedraReadExecutor`, `catalog` |
-| `rest/CatedraReadExecutor` | Lectura a la cátedra: el reintento de `RemoteReadRetry` y los errores propios de la cátedra | Integración al arrancar |
+| `rest/CatedraReadExecutor` | Lectura a la cátedra: el reintento de `RemoteReadRetry` y los errores propios de la cátedra | Integración al arrancar, `availability` (ocupaciones) |
 | `config/CatalogRestClientConfig` | Cliente HTTP del catálogo, con los timeouts y el JWT del usuario reenviado (ADR-0034) | `catalog` |
 | `config/CatedraIntegrationConfig` | Pide la integración al arrancar; sin ella, el servicio no arranca (ADR-0005) | Kafka, desde la M5 |
 | `config/JwtConfig`, `config/SecurityConfig` | Emisión y validación del JWT de usuario, y reglas de acceso | Todos los endpoints |
-| `web/advice/GlobalExceptionHandler` | Errores `problem+json`; todo 400 sin código propio es `VALIDATION_ERROR` | Todos los endpoints, `catalog` (`503 CATALOG_UNAVAILABLE` y el 401 de un token rechazado) |
+| `web/advice/GlobalExceptionHandler` | Errores `problem+json`; todo 400 sin código propio es `VALIDATION_ERROR` | Todos los endpoints, `catalog` (`503 CATALOG_UNAVAILABLE` y el 401 de un token rechazado), `availability` (`503 INTEGRATION_UNAVAILABLE`) |
 | `web/validation/MaxBytes` | Límite de largo en bytes de un campo de texto (ADR-0057) | `user` (contraseña) |

@@ -33,7 +33,7 @@ Para correr una sola clase:
 | `TestCatedraConfiguration` | Le da a la aplicación una cátedra falsa que responde la integración en estado `PROVISIONED`. Toda prueba con `@SpringBootTest` la importa, porque sin la integración el servicio no arranca | — |
 | `TestCatalogConfiguration` | Le da a la aplicación un catálogo falso, sin respuestas programadas. Toda prueba con `@SpringBootTest` la importa, porque sin la URL del catálogo el contexto no arranca | — |
 | `FakeServer` | Arma un contenedor de WireMock y le programa respuestas por su API de administración (incluidas demoras, cortes de conexión y escenarios). Lo usan la cátedra y el catálogo simulados | — |
-| `FakeCatedra` | Lo propio de la cátedra simulada: el JWT técnico de prueba y la respuesta de la integración, en `resources/catedra/integration.json` | — |
+| `FakeCatedra` | Lo propio de la cátedra simulada: el JWT técnico de prueba, la respuesta de la integración (`resources/catedra/integration.json`) y las de ocupaciones (el ejemplo de la REF §8 en `resources/catedra/occupancies-ref.json`) | — |
 | `FakeCatalog` | Lo propio del catálogo simulado: la ruta de la agenda y respuestas reales del catálogo, en `resources/catalog/` (la agenda de la 204, la de la 206 deshabilitada y el 404 `PROFESSIONAL_NOT_FOUND`) | — |
 | `TestTurnosApplication` | No es una prueba: levanta la aplicación con una base descartable para probarla a mano | Sí |
 
@@ -59,6 +59,8 @@ Las pruebas siguen la estructura de paquetes del código: cada clase se prueba e
 | El reintento común: un intento más ante falta de respuesta o error del servicio, nunca ante un 4xx, sin la dirección en el mensaje | `shared/infrastructure/rest/RemoteReadRetryTest` | No |
 | Toda lectura a la cátedra: JWT rechazado, respuesta inesperada o ilegible, cátedra lenta, caída o con error, exactamente un reintento, sin la dirección en los mensajes | `shared/infrastructure/rest/CatedraReadExecutorTest` | Sí |
 | Integración con la cátedra al arrancar: campos, JWT técnico, `PROVISIONED` u otro estado, sin secretos al imprimirla | `shared/infrastructure/config/CatedraIntegrationConfigTest` | Sí |
+| Cliente de ocupaciones: el pedido de un solo día con el JWT técnico, los campos de la REF §8, horas `HH:mm`, campos desconocidos, sin la lista, estado desconocido, 400 sin reintento, 503 con reintento | `availability/infrastructure/rest/adapter/CatedraOccupancyAdapterTest` | Sí |
+| `503 INTEGRATION_UNAVAILABLE` | `shared/infrastructure/web/advice/GlobalExceptionHandlerTest` | No |
 
 ## Pruebas del cliente del catálogo
 

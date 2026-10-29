@@ -2,6 +2,7 @@ package com.example.turnos.shared.infrastructure.web.advice;
 
 import java.util.List;
 
+import com.example.turnos.availability.application.exception.IntegrationUnavailableException;
 import com.example.turnos.catalog.application.exception.CatalogTokenRejectedException;
 import com.example.turnos.catalog.application.exception.CatalogUnavailableException;
 import com.example.turnos.user.application.exception.UserException;
@@ -30,6 +31,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	private static final String VALIDATION_ERROR = "VALIDATION_ERROR";
 	private static final String CATALOG_UNAVAILABLE = "CATALOG_UNAVAILABLE";
+	private static final String INTEGRATION_UNAVAILABLE = "INTEGRATION_UNAVAILABLE";
 
 	@Override
 	protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
@@ -65,6 +67,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	public ResponseEntity<Object> handleCatalogUnavailable(CatalogUnavailableException ex, WebRequest request) {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
 		problem.setProperty("code", CATALOG_UNAVAILABLE);
+		return handleExceptionInternal(ex, problem, new HttpHeaders(), HttpStatus.SERVICE_UNAVAILABLE, request);
+	}
+
+	// Sin las ocupaciones de la cátedra no se muestran slots (CU-03 4a).
+	@ExceptionHandler(IntegrationUnavailableException.class)
+	public ResponseEntity<Object> handleIntegrationUnavailable(IntegrationUnavailableException ex, WebRequest request) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+		problem.setProperty("code", INTEGRATION_UNAVAILABLE);
 		return handleExceptionInternal(ex, problem, new HttpHeaders(), HttpStatus.SERVICE_UNAVAILABLE, request);
 	}
 
