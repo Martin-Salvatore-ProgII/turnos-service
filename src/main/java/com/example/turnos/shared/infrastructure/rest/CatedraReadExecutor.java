@@ -2,7 +2,7 @@ package com.example.turnos.shared.infrastructure.rest;
 
 import java.util.function.Supplier;
 
-import lombok.extern.slf4j.Slf4j;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
@@ -11,34 +11,24 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 
 /**
- * Ejecuta una lectura a la API de la cátedra con las reglas comunes a todas: un intento más si la
- * cátedra no responde (ADR-0029) y una {@link CatedraRequestException} con un mensaje seguro ante
- * cualquier falla. Es la lectura de todo cliente REST hacia la cátedra: el pedido de la integración al arrancar
+ * Ejecuta una lectura a la API de la cátedra con las reglas comunes a todas: el reintento de
+ * {@link RemoteReadRetry} y una {@link CatedraRequestException} con un mensaje seguro ante cualquier
+ * falla. Es la lectura de todo cliente REST hacia la cátedra: el pedido de la integración al arrancar
  * y, más adelante, las ocupaciones (ADR-0063).
  */
-@Slf4j
 @Component
+@RequiredArgsConstructor
 public class CatedraReadExecutor {
 
-	// Es una lectura: un intento más (ADR-0029). Un corte breve no alcanza para dar la cátedra
-	// por caída.
-	private static final int MAX_ATTEMPTS = 2;
+	private static final String SERVICE_NAME = "Catedra";
+
+	private final RemoteReadRetry remoteReadRetry;
 
 	public <T> T read(Supplier<T> request) {
-		for (int attempt = 1; ; attempt++) {
-			try {
-				return readOnce(request);
-			} catch (ResourceAccessException | HttpServerErrorException e) {
-				// Sin conexión, timeout o error del lado de la cátedra. Se informa solo el tipo de
-				// falla: el mensaje original incluye la URL de la cátedra, que no va a los logs.
-				String reason = e instanceof HttpServerErrorException serverError
-						? "HTTP " + serverError.getStatusCode().value()
-						: e.getMostSpecificCause().getClass().getSimpleName();
-				if (attempt == MAX_ATTEMPTS) {
-					throw new CatedraRequestException("Catedra service unavailable (" + reason + ")");
-				}
-				log.warn("Catedra service unavailable ({}), attempt {} of {}", reason, attempt, MAX_ATTEMPTS);
-			}
+		try {
+			return remoteReadRetry.read(SERVICE_NAME, () -> readOnce(request));
+		} catch (RemoteServiceUnavailableException e) {
+			throw new CatedraRequestException(e.getMessage());
 		}
 	}
 
@@ -57,6 +47,7 @@ public class CatedraReadExecutor {
 			}
 			throw new CatedraRequestException("Unexpected response from the catedra: HTTP " + e.getStatusCode().value());
 		} catch (ResourceAccessException | HttpServerErrorException e) {
+			// Los decide RemoteReadRetry: se reintentan.
 			throw e;
 		} catch (RestClientException e) {
 			throw new CatedraRequestException("Unexpected response from the catedra: unreadable body");

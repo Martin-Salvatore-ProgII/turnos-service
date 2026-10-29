@@ -5,9 +5,12 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.example.turnos.catalog.application.exception.CatalogTokenRejectedException;
+import com.example.turnos.catalog.application.exception.CatalogUnavailableException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.junit.jupiter.api.Test;
@@ -93,6 +96,25 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	void unavailableCatalogReturnsCatalogUnavailable() throws Exception {
+		mockMvc.perform(get("/test/catalog-unavailable"))
+				.andExpect(status().isServiceUnavailable())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andExpect(jsonPath("$.code").value("CATALOG_UNAVAILABLE"))
+				.andExpect(jsonPath("$.detail").value("Catalog service unavailable (HTTP 503)"))
+				.andExpect(jsonPath("$.path").value("/test/catalog-unavailable"));
+	}
+
+	// Como cualquier token vencido: 401 sin code, con WWW-Authenticate (ADR-0034, contratos.md).
+	@Test
+	void tokenRejectedByTheCatalogReturnsUnauthorizedWithoutCode() throws Exception {
+		mockMvc.perform(get("/test/catalog-token-rejected"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(header().string("WWW-Authenticate", "Bearer error=\"invalid_token\""))
+				.andExpect(jsonPath("$.code").doesNotExist());
+	}
+
+	@Test
 	void unexpectedExceptionReturnsGenericInternalError() throws Exception {
 		mockMvc.perform(get("/test/failure"))
 				.andExpect(status().isInternalServerError())
@@ -118,6 +140,16 @@ class GlobalExceptionHandlerTest {
 
 		@GetMapping("/test/required")
 		void required(@RequestParam String value) {
+		}
+
+		@GetMapping("/test/catalog-unavailable")
+		void catalogUnavailable() {
+			throw new CatalogUnavailableException("Catalog service unavailable (HTTP 503)");
+		}
+
+		@GetMapping("/test/catalog-token-rejected")
+		void catalogTokenRejected() {
+			throw new CatalogTokenRejectedException();
 		}
 
 		@GetMapping("/test/failure")

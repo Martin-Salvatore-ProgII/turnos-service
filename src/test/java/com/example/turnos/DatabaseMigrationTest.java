@@ -15,7 +15,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 /**
  * Verifica que las migraciones de Flyway dejan el esquema esperado en PostgreSQL.
  */
-@Import({ TestcontainersConfiguration.class, TestJwtKeysConfiguration.class, TestCatedraConfiguration.class })
+@Import({ TestcontainersConfiguration.class, TestJwtKeysConfiguration.class, TestCatedraConfiguration.class, TestCatalogConfiguration.class })
 @SpringBootTest
 class DatabaseMigrationTest {
 

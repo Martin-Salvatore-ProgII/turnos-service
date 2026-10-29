@@ -2,6 +2,8 @@ package com.example.turnos.shared.infrastructure.web.advice;
 
 import java.util.List;
 
+import com.example.turnos.catalog.application.exception.CatalogTokenRejectedException;
+import com.example.turnos.catalog.application.exception.CatalogUnavailableException;
 import com.example.turnos.user.application.exception.UserException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.TypeMismatchException;
@@ -27,6 +29,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	private static final String VALIDATION_ERROR = "VALIDATION_ERROR";
+	private static final String CATALOG_UNAVAILABLE = "CATALOG_UNAVAILABLE";
 
 	@Override
 	protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
@@ -55,6 +58,24 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			problem.setProperty("code", ex.getCode().name());
 		}
 		return handleExceptionInternal(ex, problem, new HttpHeaders(), status, request);
+	}
+
+	// Sin los datos vigentes del catálogo no se inicia la operación (CU-03 3c, ENUNCIADO §8).
+	@ExceptionHandler(CatalogUnavailableException.class)
+	public ResponseEntity<Object> handleCatalogUnavailable(CatalogUnavailableException ex, WebRequest request) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+		problem.setProperty("code", CATALOG_UNAVAILABLE);
+		return handleExceptionInternal(ex, problem, new HttpHeaders(), HttpStatus.SERVICE_UNAVAILABLE, request);
+	}
+
+	// El token venció entre la llamada de la app y la del catálogo (ADR-0034): se responde como
+	// cualquier token vencido, 401 sin code, y el usuario vuelve a iniciar sesión.
+	@ExceptionHandler(CatalogTokenRejectedException.class)
+	public ResponseEntity<Object> handleCatalogTokenRejected(CatalogTokenRejectedException ex, WebRequest request) {
+		HttpHeaders headers = new HttpHeaders();
+		headers.set(HttpHeaders.WWW_AUTHENTICATE, "Bearer error=\"invalid_token\"");
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+		return handleExceptionInternal(ex, problem, headers, HttpStatus.UNAUTHORIZED, request);
 	}
 
 	@ExceptionHandler(Exception.class)

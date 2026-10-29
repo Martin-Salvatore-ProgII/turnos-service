@@ -22,6 +22,13 @@ turnos:
     # TURNOS_CATEDRA_CONNECT_TIMEOUT y TURNOS_CATEDRA_READ_TIMEOUT.
     connect-timeout: 2s
     read-timeout: 5s
+  catalog:
+    # URL base del servicio de catálogo (ADR-0002). En Docker Compose es la del contenedor.
+    api-url: ${CATALOG_API_URL}
+    # Timeouts hacia el catálogo (ADR-0029, RNF-09). Se pueden cambiar con las variables
+    # TURNOS_CATALOG_CONNECT_TIMEOUT y TURNOS_CATALOG_READ_TIMEOUT.
+    connect-timeout: 2s
+    read-timeout: 5s
   availability:
     # Cuántos días hacia adelante acepta la disponibilidad de turnos (ADR-0015, ADR-0065, RNF-09). Tiene
     # que valer lo mismo que en el catálogo. Se puede cambiar con TURNOS_AVAILABILITY_HORIZON_DAYS.

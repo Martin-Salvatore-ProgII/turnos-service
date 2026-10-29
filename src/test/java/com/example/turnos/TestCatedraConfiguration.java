@@ -23,7 +23,7 @@ public class TestCatedraConfiguration {
 	@Bean
 	public DynamicPropertyRegistrar catedraProperties(GenericContainer<?> catedraContainer) {
 		return registry -> {
-			registry.add("turnos.catedra.api-url", () -> FakeCatedra.baseUrl(catedraContainer));
+			registry.add("turnos.catedra.api-url", () -> FakeServer.baseUrl(catedraContainer));
 			registry.add("turnos.catedra.technical-token", () -> FakeCatedra.TECHNICAL_TOKEN);
 		};
 	}
