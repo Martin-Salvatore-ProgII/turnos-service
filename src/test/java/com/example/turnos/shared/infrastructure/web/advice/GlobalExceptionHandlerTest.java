@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.example.turnos.availability.application.exception.IntegrationUnavailableException;
 import com.example.turnos.catalog.application.exception.CatalogTokenRejectedException;
 import com.example.turnos.catalog.application.exception.CatalogUnavailableException;
 import jakarta.validation.Valid;
@@ -105,6 +106,15 @@ class GlobalExceptionHandlerTest {
 				.andExpect(jsonPath("$.path").value("/test/catalog-unavailable"));
 	}
 
+	@Test
+	void unavailableIntegrationReturnsIntegrationUnavailable() throws Exception {
+		mockMvc.perform(get("/test/integration-unavailable"))
+				.andExpect(status().isServiceUnavailable())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andExpect(jsonPath("$.code").value("INTEGRATION_UNAVAILABLE"))
+				.andExpect(jsonPath("$.detail").value("Catedra service unavailable (HTTP 503)"));
+	}
+
 	// Como cualquier token vencido: 401 sin code, con WWW-Authenticate (ADR-0034, contratos.md).
 	@Test
 	void tokenRejectedByTheCatalogReturnsUnauthorizedWithoutCode() throws Exception {
@@ -145,6 +155,11 @@ class GlobalExceptionHandlerTest {
 		@GetMapping("/test/catalog-unavailable")
 		void catalogUnavailable() {
 			throw new CatalogUnavailableException("Catalog service unavailable (HTTP 503)");
+		}
+
+		@GetMapping("/test/integration-unavailable")
+		void integrationUnavailable() {
+			throw new IntegrationUnavailableException("Catedra service unavailable (HTTP 503)");
 		}
 
 		@GetMapping("/test/catalog-token-rejected")
