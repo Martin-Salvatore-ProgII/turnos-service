@@ -13,6 +13,15 @@ spring:
     open-in-view: false
 
 turnos:
+  catedra:
+    # URL base de la API de la cátedra y JWT técnico, desde el .env (ADR-0005). Kafka no se configura
+    # acá: se pide a la cátedra al arrancar.
+    api-url: ${CATEDRA_API_URL}
+    technical-token: ${CATEDRA_TECHNICAL_TOKEN}
+    # Timeouts hacia la cátedra (ADR-0029, RNF-09). Se pueden cambiar con las variables
+    # TURNOS_CATEDRA_CONNECT_TIMEOUT y TURNOS_CATEDRA_READ_TIMEOUT.
+    connect-timeout: 2s
+    read-timeout: 5s
   availability:
     # Cuántos días hacia adelante acepta la disponibilidad de turnos (ADR-0015, ADR-0065, RNF-09). Tiene
     # que valer lo mismo que en el catálogo. Se puede cambiar con TURNOS_AVAILABILITY_HORIZON_DAYS.

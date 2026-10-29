@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
+import com.example.turnos.TestCatedraConfiguration;
 import com.example.turnos.TestJwtKeysConfiguration;
 import com.example.turnos.TestcontainersConfiguration;
 import org.junit.jupiter.api.Test;
@@ -40,7 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import({ TestcontainersConfiguration.class, TestJwtKeysConfiguration.class, SecurityConfigTest.TestController.class })
+@Import({ TestcontainersConfiguration.class, TestJwtKeysConfiguration.class, TestCatedraConfiguration.class, SecurityConfigTest.TestController.class })
 class SecurityConfigTest {
 
 	@Autowired
