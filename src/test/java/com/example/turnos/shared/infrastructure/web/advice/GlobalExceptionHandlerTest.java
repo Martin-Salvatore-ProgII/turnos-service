@@ -73,6 +73,18 @@ class GlobalExceptionHandlerTest {
 				.andExpect(jsonPath("$.fieldErrors[0].objectName").doesNotExist());
 	}
 
+	// Un valor que no se pudo convertir dentro de un DTO de parámetros: el mensaje de Spring nombra clases
+	// de Java y no se muestra.
+	@Test
+	void unconvertibleQueryValueReturnsValidationErrorWithAGenericMessage() throws Exception {
+		mockMvc.perform(get("/test/query").param("number", "abc"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value("number"))
+				.andExpect(jsonPath("$.fieldErrors[0].message").value("has an invalid format"))
+				.andExpect(content().string(not(containsString("java."))));
+	}
+
 	@Test
 	void missingRequiredParameterReturnsValidationError() throws Exception {
 		mockMvc.perform(get("/test/required"))
@@ -172,6 +184,10 @@ class GlobalExceptionHandlerTest {
 		void find(@PathVariable Long id) {
 		}
 
+		@GetMapping("/test/query")
+		void query(@Valid TestQuery query) {
+		}
+
 		@GetMapping("/test/required")
 		void required(@RequestParam String value) {
 		}
@@ -201,6 +217,12 @@ class GlobalExceptionHandlerTest {
 			throw new IllegalStateException("internal detail");
 		}
 
+	}
+
+	@lombok.Getter
+	@lombok.Setter
+	static class TestQuery {
+		private Long number;
 	}
 
 	record TestRequest(@NotBlank(message = "Name is mandatory") String name) {

@@ -32,6 +32,7 @@ Para correr una sola clase:
 | `TestJwtKeysConfiguration` | Genera en memoria un par de claves RSA para firmar el JWT durante las pruebas. No hay ninguna clave en el repositorio | — |
 | `TestCatedraConfiguration` | Le da a la aplicación una cátedra falsa que responde la integración en estado `PROVISIONED`. Toda prueba con `@SpringBootTest` la importa, porque sin la integración el servicio no arranca | — |
 | `TestCatalogConfiguration` | Le da a la aplicación un catálogo falso, sin respuestas programadas. Toda prueba con `@SpringBootTest` la importa, porque sin la URL del catálogo el contexto no arranca | — |
+| `TestClockConfiguration` | Fija la hora de la aplicación completa en el lunes 2026-11-02 a las 12:30 de Argentina, para las pruebas que dependen de "hoy". El JWT se sigue validando con la hora del sistema | — |
 | `FakeServer` | Arma un contenedor de WireMock y le programa respuestas por su API de administración (incluidas demoras, cortes de conexión y escenarios). Lo usan la cátedra y el catálogo simulados | — |
 | `FakeCatedra` | Lo propio de la cátedra simulada: el JWT técnico de prueba, la respuesta de la integración (`resources/catedra/integration.json`) y las de ocupaciones (el ejemplo de la REF §8 en `resources/catedra/occupancies-ref.json`) | — |
 | `FakeCatalog` | Lo propio del catálogo simulado: la ruta de la agenda y respuestas reales del catálogo, en `resources/catalog/` (la agenda de la 204, la de la 206 deshabilitada y el 404 `PROFESSIONAL_NOT_FOUND`) | — |
@@ -59,6 +60,8 @@ Las pruebas siguen la estructura de paquetes del código: cada clase se prueba e
 | Corte de un horario en slots: solo los que entran completos, el ejemplo de HU-06, el horario real de la 204, datos inválidos, sin pasar la medianoche | `availability/domain/model/ScheduleSlotsTest` | No |
 | Reglas de CU-03 con un reloj fijo: slots libres, ocupaciones `CONFIRMED` y `HELD`, hoy en hora de Argentina, horizonte, profesional inexistente o deshabilitado sin consultar a la cátedra, día sin atención, todo ocupado, ocupación desalineada, varios horarios en un día, catálogo o cátedra caídos | `availability/application/usecases/GetAvailabilityUseCaseImplTest` | No |
 | La fachada delega y deja pasar los rechazos | `availability/application/service/AvailabilityServiceTest` | No |
+| Parámetros obligatorios, formato inválido sin mensajes internos, forma de la respuesta con `HH:mm:ss`, lista vacía y rechazos con su código | `availability/infrastructure/web/controller/AvailabilityControllerTest` | No |
+| El recorrido completo con la seguridad activa y un reloj fijo: slots libres con el JWT del usuario reenviado al catálogo, hoy, sin token, fuera del horizonte, inexistente, deshabilitado, catálogo no listo y cátedra caída | `availability/AvailabilityFlowTest` | Sí |
 | `DATE_OUT_OF_RANGE` y `PROFESSIONAL_DISABLED` como 400, `PROFESSIONAL_NOT_FOUND` como 404 | `shared/infrastructure/web/advice/GlobalExceptionHandlerTest` | No |
 
 ## Pruebas de la integración con la cátedra

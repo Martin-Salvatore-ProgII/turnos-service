@@ -24,13 +24,13 @@ Las pruebas necesitan Docker en ejecución (PostgreSQL real y la cátedra simula
 
 - **Feature `user`:** registro (`POST /api/register`), inicio de sesión (`POST /api/authenticate`) y el administrador inicial, creado al arrancar. Es la feature de referencia para las siguientes.
 - **Feature `catalog`:** la agenda vigente de un profesional, pedida al catálogo (`CatalogClientPort` y `CatalogServiceAdapter`). No tiene casos de uso: la disponibilidad y la reserva usan su puerto de salida (ADR-0062).
-- **Feature `availability`:** el cálculo de la disponibilidad de CU-03 (`GetAvailabilityUseCaseImpl` y la fachada `AvailabilityService`), la regla que corta un horario en slots (`ScheduleSlots`, en el dominio porque la reserva la va a reusar) y el puerto de ocupaciones con su adaptador (`CatedraOccupancyAdapter`). "Hoy" y "ahora" son los de `AgendaZone` (ADR-0016), con el `Clock` inyectado. Una ocupación bloquea solo el slot que empieza a su hora.
+- **Feature `availability`:** `GET /api/availability` y el cálculo de la disponibilidad de CU-03 (`GetAvailabilityUseCaseImpl` y la fachada `AvailabilityService`), la regla que corta un horario en slots (`ScheduleSlots`, en el dominio porque la reserva la va a reusar) y el puerto de ocupaciones con su adaptador (`CatedraOccupancyAdapter`). "Hoy" y "ahora" son los de `AgendaZone` (ADR-0016), con el `Clock` inyectado. Una ocupación bloquea solo el slot que empieza a su hora.
 - **`shared/infrastructure/config`:** `JwtConfig` (claves, firma y validación), `SecurityConfig` (reglas de acceso y CORS), `JpaAuditingConfig`, y la integración con la cátedra: `CatedraRestClientConfig` (cliente con el JWT técnico y timeouts) y `CatedraIntegrationConfig` (pide la integración al arrancar; sin ella no arranca, ADR-0005). `CatalogRestClientConfig` arma el cliente del catálogo, que reenvía el JWT del usuario tomado del `SecurityContext` (ADR-0034).
 - **`shared/infrastructure/rest`:** `RemoteReadRetry`, el reintento de toda lectura a la cátedra o al catálogo, y `CatedraReadExecutor`, que le suma los errores propios de la cátedra (ADR-0029, ADR-0063).
 - **`shared/infrastructure/web`:** `GlobalExceptionHandler` y la validación `@MaxBytes`.
 - **Migración `V1`:** tablas `app_user`, `authority` y `app_user_authority`.
 
-Todavía no hay: el endpoint de disponibilidad, reservas ni Kafka. Tampoco HTTPS (ADR-0035).
+Todavía no hay: reservas ni Kafka. Tampoco HTTPS (ADR-0035).
 
 ## Lo propio de este servicio
 
@@ -83,6 +83,7 @@ Spring Boot 4, Spring Security 7 y Jackson 3 cambiaron cosas respecto de version
 **Cómo se arma cada tipo de prueba.**
 
 - **Controller:** `@WebMvcTest` con `@AutoConfigureMockMvc(addFilters = false)`. Sin eso, la seguridad responde 401 antes de llegar al controller. Las reglas de acceso se prueban aparte.
+- **Pruebas que dependen de "hoy":** importar `TestClockConfiguration` (un `Clock` fijo y `@Primary`). Nunca `LocalDate.now()` ni la hora de la máquina en una prueba; el JWT se sigue validando con la hora del sistema.
 - **Seguridad y recorridos completos:** `@SpringBootTest` + `@AutoConfigureMockMvc`, importando `TestcontainersConfiguration`, `TestJwtKeysConfiguration`, `TestCatedraConfiguration` y `TestCatalogConfiguration`. Sin las tres últimas, el contexto no arranca: falta la clave del JWT, la integración con la cátedra o la URL del catálogo.
 - **Adaptador de persistencia:** `@DataJpaTest` + `@AutoConfigureTestDatabase(replace = NONE)` + `@Import` de `TestcontainersConfiguration`, el adaptador y su mapper. Para leer de verdad de PostgreSQL hay que hacer `flush()` y `clear()` antes: sin eso JPA responde desde memoria, y los errores de restricciones de una colección no aparecen.
 - **Casos de uso y fachada:** JUnit y Mockito, sin Spring.
