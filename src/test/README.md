@@ -52,6 +52,15 @@ Las pruebas siguen la estructura de paquetes del código: cada clase se prueba e
 | Esquema y restricciones de la base | `DatabaseMigrationTest` | Sí |
 | Todo 400 responde `VALIDATION_ERROR`, también los que arma Spring (JSON mal formado, tipo inválido, parámetro que falta) | `shared/infrastructure/web/advice/GlobalExceptionHandlerTest` | No |
 
+## Pruebas de la disponibilidad
+
+| Qué se quiere comprobar | Dónde | Necesita Docker |
+| --- | --- | --- |
+| Corte de un horario en slots: solo los que entran completos, el ejemplo de HU-06, el horario real de la 204, datos inválidos, sin pasar la medianoche | `availability/domain/model/ScheduleSlotsTest` | No |
+| Reglas de CU-03 con un reloj fijo: slots libres, ocupaciones `CONFIRMED` y `HELD`, hoy en hora de Argentina, horizonte, profesional inexistente o deshabilitado sin consultar a la cátedra, día sin atención, todo ocupado, ocupación desalineada, varios horarios en un día, catálogo o cátedra caídos | `availability/application/usecases/GetAvailabilityUseCaseImplTest` | No |
+| La fachada delega y deja pasar los rechazos | `availability/application/service/AvailabilityServiceTest` | No |
+| `DATE_OUT_OF_RANGE` y `PROFESSIONAL_DISABLED` como 400, `PROFESSIONAL_NOT_FOUND` como 404 | `shared/infrastructure/web/advice/GlobalExceptionHandlerTest` | No |
+
 ## Pruebas de la integración con la cátedra
 
 | Qué se quiere comprobar | Dónde | Necesita Docker |
