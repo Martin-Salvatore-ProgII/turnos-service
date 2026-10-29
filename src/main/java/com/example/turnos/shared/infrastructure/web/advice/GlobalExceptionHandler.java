@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.example.turnos.user.application.exception.UserException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -64,14 +65,35 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		return handleExceptionInternal(ex, problem, new HttpHeaders(), HttpStatus.INTERNAL_SERVER_ERROR, request);
 	}
 
+	// Un parámetro con un tipo que no corresponde ("abc" donde va un número): se informa qué campo es,
+	// como en cualquier error de validación.
+	@Override
+	protected ResponseEntity<Object> handleTypeMismatch(TypeMismatchException ex, HttpHeaders headers,
+			HttpStatusCode status, WebRequest request) {
+		String field = ex.getPropertyName();
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, "Invalid value for " + field);
+		problem.setProperty("fieldErrors", List.of(FieldErrorResponse.builder()
+				.field(field)
+				.message("has an invalid format")
+				.build()));
+		return handleExceptionInternal(ex, problem, headers, status, request);
+	}
+
 	// Todos los errores pasan por acá: es el lugar para agregar el path a cada respuesta.
 	@Override
 	protected ResponseEntity<Object> handleExceptionInternal(Exception ex, Object body, HttpHeaders headers,
 			HttpStatusCode statusCode, WebRequest request) {
 		ResponseEntity<Object> response = super.handleExceptionInternal(ex, body, headers, statusCode, request);
-		if (response != null && response.getBody() instanceof ProblemDetail problem
-				&& request instanceof ServletWebRequest servletRequest) {
-			problem.setProperty("path", servletRequest.getRequest().getRequestURI());
+		if (response != null && response.getBody() instanceof ProblemDetail problem) {
+			if (request instanceof ServletWebRequest servletRequest) {
+				problem.setProperty("path", servletRequest.getRequest().getRequestURI());
+			}
+			// Un 400 sin código propio lo arma Spring (JSON mal formado, tipo inválido, parámetro que
+			// falta): para el contrato es un VALIDATION_ERROR, y así ningún 400 llega sin code.
+			boolean withoutCode = problem.getProperties() == null || !problem.getProperties().containsKey("code");
+			if (statusCode.value() == HttpStatus.BAD_REQUEST.value() && withoutCode) {
+				problem.setProperty("code", VALIDATION_ERROR);
+			}
 		}
 		return response;
 	}
