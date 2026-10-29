@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Duration;
 
 import com.example.turnos.FakeCatedra;
+import com.example.turnos.FakeServer;
 import com.example.turnos.shared.infrastructure.rest.CatedraReadExecutor;
+import com.example.turnos.shared.infrastructure.rest.RemoteReadRetry;
 import com.example.turnos.shared.infrastructure.rest.CatedraRequestException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -24,7 +26,7 @@ class CatedraIntegrationConfigTest {
 
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
-	private static final GenericContainer<?> catedra = FakeCatedra.newContainer();
+	private static final GenericContainer<?> catedra = FakeServer.newContainer();
 
 	private final CatedraIntegrationConfig config = new CatedraIntegrationConfig();
 
@@ -40,12 +42,12 @@ class CatedraIntegrationConfigTest {
 
 	@BeforeEach
 	void resetCatedra() {
-		FakeCatedra.reset(catedra);
+		FakeServer.reset(catedra);
 	}
 
 	@Test
 	void loadsTheIntegrationWhenItIsProvisioned() {
-		FakeCatedra.stub(catedra, integrationMapping().toString());
+		FakeServer.stub(catedra, integrationMapping().toString());
 
 		CatedraIntegration integration = load();
 
@@ -64,7 +66,7 @@ class CatedraIntegrationConfigTest {
 		((ObjectNode) mapping.get("request")).putObject("headers")
 				.putObject("Authorization")
 				.put("equalTo", "Bearer " + FakeCatedra.TECHNICAL_TOKEN);
-		FakeCatedra.stub(catedra, mapping.toString());
+		FakeServer.stub(catedra, mapping.toString());
 
 		assertThat(load().provisioningStatus()).isEqualTo("PROVISIONED");
 	}
@@ -73,7 +75,7 @@ class CatedraIntegrationConfigTest {
 	void failsWhenTheIntegrationIsNotProvisioned() {
 		ObjectNode mapping = integrationMapping();
 		((ObjectNode) mapping.get("response").get("jsonBody")).put("provisioningStatus", "PENDING");
-		FakeCatedra.stub(catedra, mapping.toString());
+		FakeServer.stub(catedra, mapping.toString());
 
 		assertThatThrownBy(this::load)
 				.isInstanceOf(CatedraIntegrationException.class)
@@ -82,7 +84,7 @@ class CatedraIntegrationConfigTest {
 
 	@Test
 	void failsWithTheCommonMessageWhenTheCatedraFails() {
-		FakeCatedra.stub(catedra, """
+		FakeServer.stub(catedra, """
 				{ "request": { "method": "GET", "url": "%s" }, "response": { "status": 401 } }
 				""".formatted(CatedraIntegrationConfig.INTEGRATION_PATH));
 
@@ -104,15 +106,15 @@ class CatedraIntegrationConfigTest {
 	}
 
 	private CatedraIntegration load() {
-		CatedraProperties properties = new CatedraProperties(FakeCatedra.baseUrl(catedra), FakeCatedra.TECHNICAL_TOKEN,
+		CatedraProperties properties = new CatedraProperties(FakeServer.baseUrl(catedra), FakeCatedra.TECHNICAL_TOKEN,
 				Duration.ofSeconds(1), Duration.ofMillis(500));
 		RestClient client = new CatedraRestClientConfig().catedraRestClient(properties);
-		return config.catedraIntegration(client, new CatedraReadExecutor());
+		return config.catedraIntegration(client, new CatedraReadExecutor(new RemoteReadRetry()));
 	}
 
 	// La respuesta PROVISIONED de la REF §5.3, la misma que usa la aplicación completa en las pruebas.
 	private static ObjectNode integrationMapping() {
-		return (ObjectNode) JSON.readTree(FakeCatedra.readResource(FakeCatedra.INTEGRATION_MAPPING));
+		return (ObjectNode) JSON.readTree(FakeServer.readResource(FakeCatedra.INTEGRATION_MAPPING));
 	}
 
 }

@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.Map;
 
 import com.example.turnos.FakeCatedra;
+import com.example.turnos.FakeServer;
 import com.example.turnos.shared.infrastructure.config.CatedraProperties;
 import com.example.turnos.shared.infrastructure.config.CatedraRestClientConfig;
 import org.junit.jupiter.api.AfterAll;
@@ -26,9 +27,9 @@ class CatedraReadExecutorTest {
 	private static final String PATH = "/api/any-read";
 	private static final String OK_RESPONSE = "\"status\": 200, \"headers\": { \"Content-Type\": \"application/json\" }, \"jsonBody\": { \"value\": \"ok\" }";
 
-	private static final GenericContainer<?> catedra = FakeCatedra.newContainer();
+	private static final GenericContainer<?> catedra = FakeServer.newContainer();
 
-	private final CatedraReadExecutor executor = new CatedraReadExecutor();
+	private final CatedraReadExecutor executor = new CatedraReadExecutor(new RemoteReadRetry());
 
 	@BeforeAll
 	static void startCatedra() {
@@ -42,12 +43,12 @@ class CatedraReadExecutorTest {
 
 	@BeforeEach
 	void resetCatedra() {
-		FakeCatedra.reset(catedra);
+		FakeServer.reset(catedra);
 	}
 
 	@Test
 	void returnsTheBodyWhenTheCatedraAnswers() {
-		FakeCatedra.stub(catedra, respondingWith(OK_RESPONSE));
+		FakeServer.stub(catedra, respondingWith(OK_RESPONSE));
 
 		assertThat(read(client())).containsEntry("value", "ok");
 		assertThat(requests()).isEqualTo(1);
@@ -55,7 +56,7 @@ class CatedraReadExecutorTest {
 
 	@Test
 	void doesNotRetryWhenTheTechnicalTokenIsRejected() {
-		FakeCatedra.stub(catedra, respondingWith("\"status\": 401"));
+		FakeServer.stub(catedra, respondingWith("\"status\": 401"));
 
 		assertThatThrownBy(() -> read(client()))
 				.isInstanceOf(CatedraRequestException.class)
@@ -65,7 +66,7 @@ class CatedraReadExecutorTest {
 
 	@Test
 	void doesNotRetryOnAnUnexpectedResponse() {
-		FakeCatedra.stub(catedra, respondingWith("\"status\": 404"));
+		FakeServer.stub(catedra, respondingWith("\"status\": 404"));
 
 		assertThatThrownBy(() -> read(client()))
 				.isInstanceOf(CatedraRequestException.class)
@@ -75,7 +76,7 @@ class CatedraReadExecutorTest {
 
 	@Test
 	void failsWhenTheBodyCannotBeRead() {
-		FakeCatedra.stub(catedra, respondingWith(
+		FakeServer.stub(catedra, respondingWith(
 				"\"status\": 200, \"headers\": { \"Content-Type\": \"application/json\" }, \"body\": \"no es json\""));
 
 		assertThatThrownBy(() -> read(client()))
@@ -85,7 +86,7 @@ class CatedraReadExecutorTest {
 
 	@Test
 	void failsWhenThereIsNoBody() {
-		FakeCatedra.stub(catedra, respondingWith("\"status\": 200"));
+		FakeServer.stub(catedra, respondingWith("\"status\": 200"));
 
 		assertThatThrownBy(() -> read(client()))
 				.isInstanceOf(CatedraRequestException.class)
@@ -94,7 +95,7 @@ class CatedraReadExecutorTest {
 
 	@Test
 	void retriesOnceAndFailsWhenTheCatedraDoesNotAnswerInTime() {
-		FakeCatedra.stub(catedra, respondingWith(OK_RESPONSE + ", \"fixedDelayMilliseconds\": 1500"));
+		FakeServer.stub(catedra, respondingWith(OK_RESPONSE + ", \"fixedDelayMilliseconds\": 1500"));
 
 		assertThatThrownBy(() -> read(client()))
 				.isInstanceOf(CatedraRequestException.class)
@@ -104,7 +105,7 @@ class CatedraReadExecutorTest {
 
 	@Test
 	void retriesOnceAndFailsWhenTheCatedraAnswersWithAServerError() {
-		FakeCatedra.stub(catedra, respondingWith("\"status\": 503"));
+		FakeServer.stub(catedra, respondingWith("\"status\": 503"));
 
 		assertThatThrownBy(() -> read(client()))
 				.isInstanceOf(CatedraRequestException.class)
@@ -116,7 +117,7 @@ class CatedraReadExecutorTest {
 	void makesExactlyTwoAttemptsWhenTheConnectionIsAlwaysCut() {
 		// Exactamente dos: si el cliente HTTP reintentara por su cuenta, llegarían más pedidos de los
 		// que decide el ADR-0029, y sin dejar rastro en el log.
-		FakeCatedra.stub(catedra, respondingWith("\"fault\": \"CONNECTION_RESET_BY_PEER\""));
+		FakeServer.stub(catedra, respondingWith("\"fault\": \"CONNECTION_RESET_BY_PEER\""));
 
 		assertThatThrownBy(() -> read(client()))
 				.isInstanceOf(CatedraRequestException.class)
@@ -127,7 +128,7 @@ class CatedraReadExecutorTest {
 	@Test
 	void recoversWhenOnlyTheFirstAttemptFails() {
 		// Escenario de WireMock: el primer pedido corta la conexión y el segundo responde bien.
-		FakeCatedra.stub(catedra, """
+		FakeServer.stub(catedra, """
 				{
 					"scenarioName": "corte-breve",
 					"requiredScenarioState": "Started",
@@ -136,7 +137,7 @@ class CatedraReadExecutorTest {
 					"response": { "fault": "CONNECTION_RESET_BY_PEER" }
 				}
 				""".formatted(PATH));
-		FakeCatedra.stub(catedra, """
+		FakeServer.stub(catedra, """
 				{
 					"scenarioName": "corte-breve",
 					"requiredScenarioState": "recuperada",
@@ -170,11 +171,11 @@ class CatedraReadExecutorTest {
 	}
 
 	private int requests() {
-		return FakeCatedra.countRequests(catedra, "GET", PATH);
+		return FakeServer.countRequests(catedra, "GET", PATH);
 	}
 
 	private RestClient client() {
-		return client(FakeCatedra.baseUrl(catedra));
+		return client(FakeServer.baseUrl(catedra));
 	}
 
 	private static RestClient client(String baseUrl) {
