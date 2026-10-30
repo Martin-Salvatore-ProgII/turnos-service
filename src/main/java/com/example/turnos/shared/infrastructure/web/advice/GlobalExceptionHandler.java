@@ -6,6 +6,7 @@ import com.example.turnos.availability.application.exception.AvailabilityExcepti
 import com.example.turnos.availability.application.exception.IntegrationUnavailableException;
 import com.example.turnos.catalog.application.exception.CatalogTokenRejectedException;
 import com.example.turnos.catalog.application.exception.CatalogUnavailableException;
+import com.example.turnos.reservation.application.exception.ReservationException;
 import com.example.turnos.user.application.exception.UserException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.TypeMismatchException;
@@ -81,6 +82,21 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		HttpStatus status = ex.getCode() == AvailabilityException.Code.PROFESSIONAL_NOT_FOUND
 				? HttpStatus.NOT_FOUND
 				: HttpStatus.BAD_REQUEST;
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, ex.getMessage());
+		problem.setProperty("code", ex.getCode().name());
+		return handleExceptionInternal(ex, problem, new HttpHeaders(), status, request);
+	}
+
+	// Los rechazos al iniciar o ver una reserva (contratos.md): inexistente o ajena es 404, igual en los
+	// dos casos para no revelar que existe; una reserva en curso es un conflicto (409); el resto son
+	// errores del pedido (400).
+	@ExceptionHandler(ReservationException.class)
+	public ResponseEntity<Object> handleReservationException(ReservationException ex, WebRequest request) {
+		HttpStatus status = switch (ex.getCode()) {
+			case PROFESSIONAL_NOT_FOUND, RESERVATION_NOT_FOUND -> HttpStatus.NOT_FOUND;
+			case ACTIVE_RESERVATION_EXISTS -> HttpStatus.CONFLICT;
+			case DATE_OUT_OF_RANGE, PROFESSIONAL_DISABLED, INVALID_SLOT -> HttpStatus.BAD_REQUEST;
+		};
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, ex.getMessage());
 		problem.setProperty("code", ex.getCode().name());
 		return handleExceptionInternal(ex, problem, new HttpHeaders(), status, request);
