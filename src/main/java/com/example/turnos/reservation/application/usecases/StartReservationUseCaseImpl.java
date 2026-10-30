@@ -54,6 +54,12 @@ public class StartReservationUseCaseImpl implements StartReservationUseCase {
 		// El login sale del JWT ya validado: si no existe, es un error interno, no del usuario.
 		User user = userRepository.findByLogin(login)
 				.orElseThrow(() -> new IllegalStateException("Authenticated user not found"));
+		// Atajo para el caso normal, antes de consultar al catálogo (CU-04, 2a). La garantía ante dos
+		// pedidos simultáneos la da la base al guardar el proceso (ADR-0024, ADR-0070).
+		if (reservationProcessRepository.existsActiveByUserId(user.getId())) {
+			throw new ReservationException(ReservationException.Code.ACTIVE_RESERVATION_EXISTS,
+					"User " + login + " already has an active reservation");
+		}
 
 		ProfessionalAgenda agenda = catalogClientPort.getProfessionalAgenda(professionalId)
 				.orElseThrow(() -> new ReservationException(ReservationException.Code.PROFESSIONAL_NOT_FOUND,

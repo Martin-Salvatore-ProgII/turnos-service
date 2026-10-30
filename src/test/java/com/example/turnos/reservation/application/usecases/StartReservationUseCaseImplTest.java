@@ -224,20 +224,20 @@ class StartReservationUseCaseImplTest {
 	void todayRejectsASlotThatAlreadyStartedWithoutAskingTheCatedra() {
 		// A las 12:30 de Argentina, el de 12:20 ya empezó.
 		assertRejected(TODAY, LocalTime.parse("12:20"), ReservationException.Code.INVALID_SLOT);
-		verifyNoInteractions(reservationProcessRepository, holdPort);
+		assertNothingSavedNorHeld();
 	}
 
 	@Test
 	void rejectsATimeThatIsNotASlotOfTheAgenda() {
 		// 11:30 está dentro del horario pero no es el inicio de un slot de 20 minutos.
 		assertRejected(NEXT_MONDAY, LocalTime.parse("11:30"), ReservationException.Code.INVALID_SLOT);
-		verifyNoInteractions(reservationProcessRepository, holdPort);
+		assertNothingSavedNorHeld();
 	}
 
 	@Test
 	void rejectsADayTheProfessionalDoesNotAttend() {
 		assertRejected(LocalDate.parse("2026-11-10"), ELEVEN_TWENTY, ReservationException.Code.INVALID_SLOT);
-		verifyNoInteractions(reservationProcessRepository, holdPort);
+		assertNothingSavedNorHeld();
 	}
 
 	@Test
@@ -252,7 +252,7 @@ class StartReservationUseCaseImplTest {
 		when(catalogClientPort.getProfessionalAgenda(LAURA)).thenReturn(Optional.empty());
 
 		assertRejected(NEXT_MONDAY, ELEVEN_TWENTY, ReservationException.Code.PROFESSIONAL_NOT_FOUND);
-		verifyNoInteractions(reservationProcessRepository, holdPort);
+		assertNothingSavedNorHeld();
 	}
 
 	@Test
@@ -260,7 +260,18 @@ class StartReservationUseCaseImplTest {
 		when(catalogClientPort.getProfessionalAgenda(LAURA)).thenReturn(Optional.of(laura(false)));
 
 		assertRejected(NEXT_MONDAY, ELEVEN_TWENTY, ReservationException.Code.PROFESSIONAL_DISABLED);
-		verifyNoInteractions(reservationProcessRepository, holdPort);
+		assertNothingSavedNorHeld();
+	}
+
+	@Test
+	void rejectsAUserWithAnActiveReservationWithoutAskingAnyone() {
+		// CU-04, 2a: ni el catálogo ni la cátedra. La garantía ante pedidos simultáneos es de la base y
+		// se prueba en el adaptador (ADR-0070).
+		when(reservationProcessRepository.existsActiveByUserId(7L)).thenReturn(true);
+
+		assertRejected(NEXT_MONDAY, ELEVEN_TWENTY, ReservationException.Code.ACTIVE_RESERVATION_EXISTS);
+		verifyNoInteractions(catalogClientPort);
+		assertNothingSavedNorHeld();
 	}
 
 	@Test
@@ -270,13 +281,21 @@ class StartReservationUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.startReservation("juan", LAURA, NEXT_MONDAY, ELEVEN_TWENTY))
 				.isInstanceOf(CatalogUnavailableException.class);
-		verifyNoInteractions(reservationProcessRepository, holdPort);
+		assertNothingSavedNorHeld();
 	}
 
 	private void assertRejected(LocalDate date, LocalTime startTime, ReservationException.Code code) {
 		assertThatThrownBy(() -> useCase.startReservation("juan", LAURA, date, startTime))
 				.isInstanceOf(ReservationException.class)
 				.extracting("code").isEqualTo(code);
+	}
+
+	// No se guardó ningún proceso ni se llamó a la cátedra. La consulta de un proceso activo sí puede
+	// haber ocurrido: es una lectura.
+	private void assertNothingSavedNorHeld() {
+		verify(reservationProcessRepository, never()).create(any());
+		verify(reservationProcessRepository, never()).update(any(), any());
+		verifyNoInteractions(holdPort);
 	}
 
 	private void whenTheHoldIsCreated() {
