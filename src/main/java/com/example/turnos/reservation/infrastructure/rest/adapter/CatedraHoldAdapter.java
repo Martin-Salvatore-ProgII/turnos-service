@@ -7,13 +7,17 @@ import java.time.LocalTime;
 import java.util.Set;
 import java.util.UUID;
 
+import com.example.turnos.reservation.domain.model.ConfirmationResult;
 import com.example.turnos.reservation.domain.model.Hold;
 import com.example.turnos.reservation.domain.model.HoldResult;
 import com.example.turnos.reservation.domain.model.ReservationFailureReason;
 import com.example.turnos.reservation.domain.ports.out.HoldPort;
+import com.example.turnos.reservation.infrastructure.rest.dto.ConfirmationResponse;
 import com.example.turnos.reservation.infrastructure.rest.dto.HoldResponse;
 import com.example.turnos.reservation.infrastructure.rest.mapper.HoldMapper;
 import com.example.turnos.shared.infrastructure.rest.ProblemDto;
+import com.example.turnos.shared.infrastructure.rest.RemoteCommandRetry;
+import com.example.turnos.shared.infrastructure.rest.RemoteServiceUnavailableException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -29,6 +33,7 @@ import org.springframework.web.client.RestClientException;
 public class CatedraHoldAdapter implements HoldPort {
 
 	static final String HOLDS_PATH = "/api/appointment-holds";
+	static final String CONFIRM_PATH = "/api/appointment-holds/{holdId}/confirm";
 
 	// Los rechazos de la cátedra al crear un hold (REF §13.1) que significan algo para el usuario: el
 	// motivo de FAILED es el mismo code. Cualquier otro 4xx (un VALIDATION_ERROR, el JWT técnico
@@ -36,7 +41,16 @@ public class CatedraHoldAdapter implements HoldPort {
 	private static final Set<String> REJECTION_CODES = Set.of("SLOT_ALREADY_HELD", "SLOT_ALREADY_RESERVED",
 			"INVALID_SLOT", "PROFESSIONAL_DISABLED", "PROFESSIONAL_NOT_FOUND");
 
+	// Los rechazos de la confirmación (REF §13.1) que hablan del hold o del turno: el motivo de FAILED es
+	// el mismo code. HOLD_EXPIRED se trata aparte, y cualquier otro 4xx (VALIDATION_ERROR,
+	// HOLD_OWNER_MISMATCH, el JWT técnico rechazado) es un error de la integración, como en el hold.
+	private static final Set<String> CONFIRMATION_REJECTION_CODES = Set.of("HOLD_NOT_FOUND",
+			"EXTERNAL_PATIENT_MISMATCH", "SLOT_ALREADY_RESERVED", "INVALID_SLOT", "PROFESSIONAL_NOT_FOUND");
+	private static final String HOLD_EXPIRED = "HOLD_EXPIRED";
+	private static final String ALREADY_CONFIRMED = "RESERVATION_PROCESS_ALREADY_CONFIRMED";
+
 	private final RestClient catedraRestClient;
+	private final RemoteCommandRetry remoteCommandRetry;
 	private final HoldMapper holdMapper;
 
 	// Un solo intento, pase lo que pase (ADR-0028, ADR-0069): crear un hold no es seguro de repetir, y
@@ -69,6 +83,50 @@ public class CatedraHoldAdapter implements HoldPort {
 		} catch (RestClientException e) {
 			return unavailable("unreadable body");
 		}
+	}
+
+	// La confirmación sí se reintenta (ADR-0029): va sobre nuestro holdId y la cátedra reconoce la ya
+	// hecha. Si un intento llegó y se perdió su respuesta, el siguiente recibe ALREADY_CONFIRMED, que
+	// prueba que se confirmó y se trata como éxito (probado contra la cátedra real).
+	@Override
+	public ConfirmationResult confirmHold(String holdId, UUID externalPatientId, String patientFirstName,
+			String patientLastName) {
+		try {
+			ConfirmationResponse response = remoteCommandRetry.execute("Confirmation of hold " + holdId,
+					() -> catedraRestClient.post()
+							.uri(CONFIRM_PATH, holdId)
+							.body(holdMapper.toConfirmationRequest(externalPatientId, patientFirstName, patientLastName))
+							.retrieve()
+							.body(ConfirmationResponse.class));
+			return ConfirmationResult.accepted(response == null ? null : response.getExpiresAt());
+		} catch (HttpClientErrorException e) {
+			return confirmationAnswer(holdId, e);
+		} catch (RemoteServiceUnavailableException e) {
+			// Sin respuesta después de los reintentos: la cátedra pudo haberla recibido, así que el
+			// proceso no se cierra. Lo resuelve el pedido de teléfono o la reconciliación (ADR-0029).
+			log.warn("{}: the reservation process stays held", e.getMessage());
+			return ConfirmationResult.noResponse();
+		} catch (RestClientException e) {
+			// Un 2xx con un cuerpo que no se puede leer: tampoco se sabe con certeza qué pasó.
+			log.warn("Confirmation of hold {} returned an unreadable body: the reservation process stays held", holdId);
+			return ConfirmationResult.noResponse();
+		}
+	}
+
+	private ConfirmationResult confirmationAnswer(String holdId, HttpClientErrorException e) {
+		String code = ProblemDto.codeOf(e);
+		if (ALREADY_CONFIRMED.equals(code)) {
+			return ConfirmationResult.accepted(null);
+		}
+		if (HOLD_EXPIRED.equals(code)) {
+			return ConfirmationResult.expired(code);
+		}
+		if (code != null && CONFIRMATION_REJECTION_CODES.contains(code)) {
+			return ConfirmationResult.rejected(code);
+		}
+		log.warn("Confirmation of hold {} failed (HTTP {}{})", holdId, e.getStatusCode().value(),
+				code == null ? "" : " " + code);
+		return ConfirmationResult.rejected(ReservationFailureReason.INTEGRATION_UNAVAILABLE);
 	}
 
 	// Un 201 sin los identificadores no sirve: sin holdId no se puede confirmar. Si el hold existe,

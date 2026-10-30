@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -26,6 +28,7 @@ import com.example.turnos.catalog.domain.model.ProfessionalAgenda;
 import com.example.turnos.catalog.domain.model.WeeklySchedule;
 import com.example.turnos.catalog.domain.ports.out.CatalogClientPort;
 import com.example.turnos.reservation.application.exception.ReservationException;
+import com.example.turnos.reservation.domain.model.ConfirmationResult;
 import com.example.turnos.reservation.domain.model.Hold;
 import com.example.turnos.reservation.domain.model.HoldResult;
 import com.example.turnos.reservation.domain.model.ReservationFailureReason;
@@ -39,7 +42,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
-// Las reglas de CU-04, pasos 3 a 5, con JUnit y Mockito, sin Spring. La agenda es la de Laura Medina
+// Las reglas de CU-04, pasos 3 a 6, con JUnit y Mockito, sin Spring. La agenda es la de Laura Medina
 // (204): lunes de 11:00 a 15:00, slots de 20 minutos. "Ahora" es el lunes 2026-11-02 a las 12:30 de
 // Argentina (15:30 UTC).
 class StartReservationUseCaseImplTest {
@@ -70,28 +73,87 @@ class StartReservationUseCaseImplTest {
 		when(reservationProcessRepository.create(any())).thenAnswer(invocation -> saved(invocation.getArgument(0)));
 		when(reservationProcessRepository.update(any(), any()))
 				.thenAnswer(invocation -> Optional.of(saved(invocation.getArgument(1))));
+		when(holdPort.confirmHold(any(), any(), any(), any())).thenReturn(ConfirmationResult.accepted(null));
 	}
 
 	@Test
-	void savesTheProcessBeforeAskingForTheHoldAndThenKeepsItHeld() {
-		Instant expiresAt = Instant.parse("2026-11-02T15:40:00Z");
+	void savesEachStepBeforeTheNextCallAndEndsAwaitingTheRequest() {
+		Instant holdExpiresAt = Instant.parse("2026-11-02T15:40:00Z");
+		Instant processExpiresAt = Instant.parse("2026-11-02T15:41:00Z");
 		when(holdPort.createHold(LAURA, NEXT_MONDAY, ELEVEN_TWENTY, EXTERNAL_PATIENT_ID))
-				.thenReturn(HoldResult.created(new Hold("hold-1", "process-1", expiresAt)));
+				.thenReturn(HoldResult.created(new Hold("hold-1", "process-1", holdExpiresAt)));
+		when(holdPort.confirmHold("hold-1", EXTERNAL_PATIENT_ID, "Juan", "Perez"))
+				.thenReturn(ConfirmationResult.accepted(processExpiresAt));
 
 		ReservationProcess process = useCase.startReservation("juan", LAURA, NEXT_MONDAY, ELEVEN_TWENTY);
 
-		// ADR-0022: primero queda guardado en STARTED, después se pide el hold, y recién entonces HELD.
+		// ADR-0022: guardado en STARTED antes del hold, y en HELD (con sus identificadores) antes de
+		// confirmar. Así un evento que llegue antes que la respuesta encuentra el proceso.
 		InOrder order = inOrder(reservationProcessRepository, holdPort);
 		order.verify(reservationProcessRepository).create(any());
 		order.verify(holdPort).createHold(LAURA, NEXT_MONDAY, ELEVEN_TWENTY, EXTERNAL_PATIENT_ID);
 		order.verify(reservationProcessRepository).update(eq(process.getId()), any());
-		assertThat(savedStatuses).containsExactly(ReservationStatus.STARTED, ReservationStatus.HELD);
+		order.verify(holdPort).confirmHold("hold-1", EXTERNAL_PATIENT_ID, "Juan", "Perez");
+		order.verify(reservationProcessRepository).update(eq(process.getId()), any());
+		assertThat(savedStatuses).containsExactly(ReservationStatus.STARTED, ReservationStatus.HELD,
+				ReservationStatus.AWAITING_REQUEST);
 
-		assertThat(process.getStatus()).isEqualTo(ReservationStatus.HELD);
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.AWAITING_REQUEST);
 		assertThat(process.getHoldId()).isEqualTo("hold-1");
 		assertThat(process.getReservationProcessId()).isEqualTo("process-1");
-		assertThat(process.getExpiresAt()).isEqualTo(expiresAt);
+		// El vencimiento es el que informó la confirmación.
+		assertThat(process.getExpiresAt()).isEqualTo(processExpiresAt);
 		assertThat(process.getFailureReason()).isNull();
+	}
+
+	@Test
+	void anAlreadyConfirmedHoldKeepsTheExpirationOfTheHold() {
+		// Un reintento cuya respuesta fue RESERVATION_PROCESS_ALREADY_CONFIRMED: es un éxito sin vencimiento.
+		Instant holdExpiresAt = Instant.parse("2026-11-02T15:40:00Z");
+		when(holdPort.createHold(any(), any(), any(), any()))
+				.thenReturn(HoldResult.created(new Hold("hold-1", "process-1", holdExpiresAt)));
+
+		ReservationProcess process = useCase.startReservation("juan", LAURA, NEXT_MONDAY, ELEVEN_TWENTY);
+
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.AWAITING_REQUEST);
+		assertThat(process.getExpiresAt()).isEqualTo(holdExpiresAt);
+	}
+
+	@Test
+	void anExpiredHoldEndsTheProcessAsExpired() {
+		whenTheHoldIsCreated();
+		when(holdPort.confirmHold(any(), any(), any(), any())).thenReturn(ConfirmationResult.expired("HOLD_EXPIRED"));
+
+		ReservationProcess process = useCase.startReservation("juan", LAURA, NEXT_MONDAY, ELEVEN_TWENTY);
+
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.EXPIRED);
+		assertThat(process.getFailureReason()).isEqualTo("HOLD_EXPIRED");
+	}
+
+	@Test
+	void aRejectedConfirmationEndsTheProcessAsFailedWithTheReason() {
+		whenTheHoldIsCreated();
+		when(holdPort.confirmHold(any(), any(), any(), any()))
+				.thenReturn(ConfirmationResult.rejected("SLOT_ALREADY_RESERVED"));
+
+		ReservationProcess process = useCase.startReservation("juan", LAURA, NEXT_MONDAY, ELEVEN_TWENTY);
+
+		assertThat(savedStatuses).containsExactly(ReservationStatus.STARTED, ReservationStatus.HELD,
+				ReservationStatus.FAILED);
+		assertThat(process.getFailureReason()).isEqualTo("SLOT_ALREADY_RESERVED");
+	}
+
+	@Test
+	void aConfirmationWithoutResponseLeavesTheProcessHeld() {
+		// ADR-0029: la cátedra pudo haberla recibido, así que no se cierra ni se vuelve a guardar.
+		whenTheHoldIsCreated();
+		when(holdPort.confirmHold(any(), any(), any(), any())).thenReturn(ConfirmationResult.noResponse());
+
+		ReservationProcess process = useCase.startReservation("juan", LAURA, NEXT_MONDAY, ELEVEN_TWENTY);
+
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.HELD);
+		assertThat(process.getFailureReason()).isNull();
+		assertThat(savedStatuses).containsExactly(ReservationStatus.STARTED, ReservationStatus.HELD);
 	}
 
 	@Test
@@ -122,6 +184,8 @@ class StartReservationUseCaseImplTest {
 		assertThat(process.getStatus()).isEqualTo(ReservationStatus.FAILED);
 		assertThat(process.getFailureReason()).isEqualTo("SLOT_ALREADY_HELD");
 		assertThat(process.getHoldId()).isNull();
+		// Sin hold no hay nada que confirmar.
+		verify(holdPort, never()).confirmHold(any(), any(), any(), any());
 	}
 
 	@Test
@@ -143,7 +207,7 @@ class StartReservationUseCaseImplTest {
 
 		ReservationProcess process = useCase.startReservation("juan", LAURA, NEXT_MONDAY, LocalTime.parse("11:20:00"));
 
-		assertThat(process.getStatus()).isEqualTo(ReservationStatus.HELD);
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.AWAITING_REQUEST);
 	}
 
 	@Test
@@ -153,7 +217,7 @@ class StartReservationUseCaseImplTest {
 
 		ReservationProcess process = useCase.startReservation("juan", LAURA, TODAY, LocalTime.parse("12:40"));
 
-		assertThat(process.getStatus()).isEqualTo(ReservationStatus.HELD);
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.AWAITING_REQUEST);
 	}
 
 	@Test
@@ -213,6 +277,11 @@ class StartReservationUseCaseImplTest {
 		assertThatThrownBy(() -> useCase.startReservation("juan", LAURA, date, startTime))
 				.isInstanceOf(ReservationException.class)
 				.extracting("code").isEqualTo(code);
+	}
+
+	private void whenTheHoldIsCreated() {
+		when(holdPort.createHold(any(), any(), any(), any()))
+				.thenReturn(HoldResult.created(new Hold("hold-1", "process-1", NOW)));
 	}
 
 	private ReservationProcess saved(ReservationProcess process) {
