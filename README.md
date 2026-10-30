@@ -6,7 +6,7 @@ Es uno de los tres repositorios de la entrega, junto con `catalogo-service` y `a
 
 ## Estado
 
-Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Al arrancar obtiene de la cátedra la configuración de la integración; sin ella no arranca. Disponibilidad de turnos de un profesional para una fecha (`GET /api/availability?professionalId=&date=`), armada con su agenda vigente (pedida al catálogo reenviando el JWT del usuario) y las ocupaciones de la cátedra. Faltan las reservas.
+Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Al arrancar obtiene de la cátedra la configuración de la integración; sin ella no arranca. Disponibilidad de turnos de un profesional para una fecha (`GET /api/availability?professionalId=&date=`), armada con su agenda vigente (pedida al catálogo reenviando el JWT del usuario) y las ocupaciones de la cátedra. Inicio de una reserva (`POST /api/reservations`, con el profesional, la fecha y la hora): valida el turno con la agenda vigente, crea el hold en la cátedra y lo confirma, y responde la reserva en el estado en que quedó. Consulta de una reserva propia (`GET /api/reservations/{id}`), la que la app repite mientras el proceso avanza; la de otro usuario responde 404. Faltan el paso del teléfono por Kafka, el listado y la cancelación.
 
 ## Requisitos
 
@@ -54,6 +54,8 @@ El servicio recibe la conexión en `DB_URL`, `DB_USER` y `DB_PASSWORD`; el Compo
 En el `.env` van solo la URL base y el JWT técnico. Kafka y sus topics no se configuran: al arrancar, el servicio los pide con `GET /api/student/integration` y los guarda solo en memoria (ADR-0005). Si la cátedra no responde (con un reintento), rechaza el JWT o la integración no está `PROVISIONED`, el servicio no arranca y lo informa en el log, sin mostrar valores.
 
 Los timeouts hacia la cátedra tienen un valor inicial de 2 segundos para conectar y 5 para la respuesta (ADR-0029). Se pueden cambiar con `TURNOS_CATEDRA_CONNECT_TIMEOUT` y `TURNOS_CATEDRA_READ_TIMEOUT` (por ejemplo, `3s`).
+
+La confirmación inicial de un hold se reintenta hasta 2 veces si la cátedra no responde, esperando 500 ms y después 1 s (ADR-0029). Crear un hold nunca se reintenta (ADR-0028). Se pueden cambiar con `TURNOS_COMMAND_RETRY_RETRIES` y `TURNOS_COMMAND_RETRY_INITIAL_BACKOFF`.
 
 ### Ocupaciones de la cátedra
 
@@ -150,6 +152,7 @@ com.example.turnos
 ├── user/          feature de usuarios finales
 ├── catalog/       la agenda vigente pedida al servicio de catálogo (sin casos de uso: la usan otras features por su puerto)
 ├── availability/  disponibilidad de turnos: el cálculo, los slots y el cliente de ocupaciones de la cátedra
+├── reservation/   el proceso de reserva: su tabla, sus estados, el inicio de la reserva (un proceso activo por usuario) y el cliente de holds y confirmaciones de la cátedra
 └── shared/        configuración (cliente e integración de la cátedra, seguridad) y manejo de errores comunes
 ```
 
@@ -159,13 +162,15 @@ Lo que sirve a más de una feature se lleva a `shared` en cuanto aparece el segu
 
 | Pieza | Qué hace | La usan |
 | --- | --- | --- |
-| `config/CatedraRestClientConfig` | Cliente HTTP de la cátedra, con el JWT técnico y los timeouts | Integración al arrancar, `availability` (ocupaciones) |
+| `config/CatedraRestClientConfig` | Cliente HTTP de la cátedra, con el JWT técnico y los timeouts | Integración al arrancar, `availability` (ocupaciones), `reservation` (holds) |
 | `rest/RemoteReadRetry` | El reintento de toda lectura a un servicio externo: un intento más si no responde o falla de su lado (ADR-0029), con mensajes sin su dirección | `CatedraReadExecutor`, `catalog` |
+| `rest/RemoteCommandRetry` | El reintento de las operaciones con efectos seguras de repetir: hasta 2 reintentos con espera creciente (ADR-0029), configurables | `reservation` (confirmación inicial) |
 | `rest/CatedraReadExecutor` | Lectura a la cátedra: el reintento de `RemoteReadRetry` y los errores propios de la cátedra | Integración al arrancar, `availability` (ocupaciones) |
+| `rest/ProblemDto` | Lee el `code` de un error `problem+json` del catálogo o de la cátedra | `catalog`, `reservation` (holds) |
 | `config/CatalogRestClientConfig` | Cliente HTTP del catálogo, con los timeouts y el JWT del usuario reenviado (ADR-0034) | `catalog` |
 | `config/CatedraIntegrationConfig` | Pide la integración al arrancar; sin ella, el servicio no arranca (ADR-0005) | Kafka, desde la M5 |
 | `config/JwtConfig`, `config/SecurityConfig` | Emisión y validación del JWT de usuario, y reglas de acceso | Todos los endpoints |
 | `web/advice/GlobalExceptionHandler` | Errores `problem+json`; todo 400 sin código propio es `VALIDATION_ERROR` | Todos los endpoints, `catalog` (`503 CATALOG_UNAVAILABLE` y el 401 de un token rechazado), `availability` (`DATE_OUT_OF_RANGE`, `PROFESSIONAL_DISABLED`, `PROFESSIONAL_NOT_FOUND`, `503 INTEGRATION_UNAVAILABLE`) |
-| `config/ClockConfig` | La hora como `Clock` inyectado, para poder fijarla en las pruebas | `availability` |
-| `config/AvailabilityConfig` | Pasa al dominio el horizonte de fechas configurable (ADR-0065, RNF-09) | `availability` |
+| `config/ClockConfig` | La hora como `Clock` inyectado, para poder fijarla en las pruebas | `availability`, `reservation` |
+| `config/AvailabilityConfig` | Pasa al dominio el horizonte de fechas configurable (ADR-0065, RNF-09) | `availability`, `reservation` |
 | `web/validation/MaxBytes` | Límite de largo en bytes de un campo de texto (ADR-0057) | `user` (contraseña) |

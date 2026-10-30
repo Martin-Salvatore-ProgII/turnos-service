@@ -24,13 +24,14 @@ Las pruebas necesitan Docker en ejecución (PostgreSQL real y la cátedra simula
 
 - **Feature `user`:** registro (`POST /api/register`), inicio de sesión (`POST /api/authenticate`) y el administrador inicial, creado al arrancar. Es la feature de referencia para las siguientes.
 - **Feature `catalog`:** la agenda vigente de un profesional, pedida al catálogo (`CatalogClientPort` y `CatalogServiceAdapter`). No tiene casos de uso: la disponibilidad y la reserva usan su puerto de salida (ADR-0062).
-- **Feature `availability`:** `GET /api/availability` y el cálculo de la disponibilidad de CU-03 (`GetAvailabilityUseCaseImpl` y la fachada `AvailabilityService`), la regla que corta un horario en slots (`ScheduleSlots`, en el dominio porque la reserva la va a reusar) y el puerto de ocupaciones con su adaptador (`CatedraOccupancyAdapter`). "Hoy" y "ahora" son los de `AgendaZone` (ADR-0016), con el `Clock` inyectado. Una ocupación bloquea solo el slot que empieza a su hora.
+- **Feature `availability`:** `GET /api/availability` y el cálculo de la disponibilidad de CU-03 (`GetAvailabilityUseCaseImpl` y la fachada `AvailabilityService`), la regla que corta un horario en slots (`ScheduleSlots`, en el dominio porque la reserva también la usa) y el puerto de ocupaciones con su adaptador (`CatedraOccupancyAdapter`). "Hoy" y "ahora" son los de `AgendaZone` (ADR-0016), con el `Clock` inyectado. Una ocupación bloquea solo el slot que empieza a su hora.
 - **`shared/infrastructure/config`:** `JwtConfig` (claves, firma y validación), `SecurityConfig` (reglas de acceso y CORS), `JpaAuditingConfig`, y la integración con la cátedra: `CatedraRestClientConfig` (cliente con el JWT técnico y timeouts) y `CatedraIntegrationConfig` (pide la integración al arrancar; sin ella no arranca, ADR-0005). `CatalogRestClientConfig` arma el cliente del catálogo, que reenvía el JWT del usuario tomado del `SecurityContext` (ADR-0034).
-- **`shared/infrastructure/rest`:** `RemoteReadRetry`, el reintento de toda lectura a la cátedra o al catálogo, y `CatedraReadExecutor`, que le suma los errores propios de la cátedra (ADR-0029, ADR-0063).
+- **`shared/infrastructure/rest`:** `RemoteReadRetry`, el reintento de toda lectura a la cátedra o al catálogo, y `CatedraReadExecutor`, que le suma los errores propios de la cátedra (ADR-0029, ADR-0063). `RemoteCommandRetry`, el de las operaciones con efectos seguras de repetir (confirmación; después, cancelación), con espera creciente configurable. `ProblemDto` lee el `code` de un `problem+json`.
 - **`shared/infrastructure/web`:** `GlobalExceptionHandler` y la validación `@MaxBytes`.
-- **Migración `V1`:** tablas `app_user`, `authority` y `app_user_authority`.
+- **Feature `reservation` (M4 terminada):** el proceso de reserva y su máquina de estados. `ReservationTrigger` tiene una constante por fila de la tabla de transiciones de `docs/arq/maquina-estados.md`, y `ReservationProcess.apply` solo cambia el estado si el disparador vale desde el actual (ADR-0023). El proceso lleva `version` con `@Version`: un cambio sobre una lectura vieja no se guarda y el adaptador lanza `ReservationProcessConflictException` (ADR-0068). `ReservationProcessTest` prueba las 140 combinaciones contra una tabla escrita a mano: si cambia una transición, cambian el documento y esa tabla. `StartReservationUseCaseImpl` valida el turno contra la agenda vigente (reusa `AvailabilityHorizon` y `ScheduleSlots.ofDay`), guarda el proceso en `STARTED`, pide el hold con `HoldPort` (`CatedraHoldAdapter`, un solo intento: toda falla deja el proceso `FAILED`, ADR-0028 y ADR-0069) y lo confirma (con `RemoteCommandRetry`; `RESERVATION_PROCESS_ALREADY_CONFIRMED` es éxito y sin respuesta queda en `HELD`, ADR-0029). Antes de consultar al catálogo rechaza a un usuario con una reserva en curso (`ACTIVE_RESERVATION_EXISTS`); la garantía ante pedidos simultáneos es el índice de `V3`, que el adaptador traduce a ese mismo error (ADR-0070, `ActiveReservationConcurrencyTest`). `POST /api/reservations` y `GET /api/reservations/{id}` (fachada `ReservationService`, `ReservationController`); el usuario sale siempre del JWT (`Authentication.getName()`), y una reserva ajena se filtra en la consulta misma (`findByIdAndUserId`), así que responde igual que una inexistente.
+- **Migraciones:** `V1` con `app_user`, `authority` y `app_user_authority`; `V2` con `reservation_process`; `V3` con el índice único parcial que deja un solo proceso activo por usuario.
 
-Todavía no hay: reservas ni Kafka. Tampoco HTTPS (ADR-0035).
+Todavía no hay: Kafka (teléfono y eventos de la reserva), reconciliación, listado ni cancelación de reservas. Tampoco HTTPS (ADR-0035).
 
 ## Lo propio de este servicio
 
@@ -42,6 +43,7 @@ Todavía no hay: reservas ni Kafka. Tampoco HTTPS (ADR-0035).
 - **El administrador no se registra desde la app** (ADR-0061): lo crea `AdminUserInitializer` al arrancar, y solo es administrador la cuenta con el login y la contraseña configurados.
 - **Un adaptador de entrada puede no ser REST.** `AdminUserInitializer` es el ejemplo: sin lógica, llama a la fachada. Los consumidores de Kafka siguen la misma forma.
 - **El `compose.yaml` de este repo es el del sistema completo** e incluye al del catálogo. Necesita `../catalogo-service` y un `.env` en cada repo. Las variables de este `.env` llevan el prefijo `TURNOS_` porque una variable repetida pisaría el valor del catálogo.
+- **Las reglas de "como máximo uno" las garantiza la base** (ADR-0070): una restricción o un índice único, con su nombre, que el adaptador reconoce y traduce al error funcional. Una consulta previa es solo un atajo. Para probar la concurrencia de verdad, ver `ActiveReservationConcurrencyTest` (sin transacción alrededor del test, y los datos se borran a mano).
 - **Este servicio no guarda una copia del catálogo** (Constitución P-05): consulta al servicio de catálogo reenviando el JWT del usuario (ADR-0034).
 
 ## Flujo de trabajo con Git
@@ -99,6 +101,8 @@ Spring Boot 4, Spring Security 7 y Jackson 3 cambiaron cosas respecto de version
 **Errores.** `GlobalExceptionHandler` tiene un manejador genérico de `Exception` que responde 500. La excepción de cada feature necesita su propio manejador ahí, o termina como 500. `ProblemDetail` agrega solo el campo `instance`; el `code`, el `path` y los `fieldErrors` del contrato se agregan con `setProperty`.
 
 **Base de datos.** El esquema lo define Flyway; Hibernate solo valida (`ddl-auto: validate`). Una migración ya mergeada no se edita: el cambio va en la siguiente (`V2__...`). Los nombres de columnas se derivan solos de los campos de la entity (`createdAt` es `created_at`).
+
+**WireMock y HTTP/2.** WireMock acepta pasar a HTTP/2 sobre HTTP y la cátedra real no (probado con `curl --http2`). En ese modo, los `POST` del cliente de Java se cortan (`RST_STREAM`). La cátedra simulada (`FakeCatedra.newContainerLikeTheCatedra`, y la de `CatedraHoldAdapterTest`) arranca con `FakeCatedra.HTTP_1_ONLY`, que es como se comporta la cátedra real.
 
 **Docker.** Si se cambia código y se prueba con Compose, hay que pasar `--build`, o corre la imagen vieja.
 
