@@ -191,6 +191,19 @@ class JpaReservationProcessRepositoryAdapterTest {
 	}
 
 	@Test
+	void findByIdAndUserIdReturnsTheProcessOnlyToItsOwner() {
+		// La reserva de otro usuario no sale de la base: la consulta ya filtra por el dueño.
+		ReservationProcess created = adapter.create(startedProcess());
+		Long otherUser = insertUser("ana");
+		entityManager.flush();
+		entityManager.clear();
+
+		assertThat(adapter.findByIdAndUserId(created.getId(), userId)).isPresent();
+		assertThat(adapter.findByIdAndUserId(created.getId(), otherUser)).isEmpty();
+		assertThat(adapter.findByIdAndUserId(UUID.randomUUID(), userId)).isEmpty();
+	}
+
+	@Test
 	void existsActiveCountsOnlyProcessesThatAreNotFinal() {
 		assertThat(adapter.existsActiveByUserId(userId)).isFalse();
 

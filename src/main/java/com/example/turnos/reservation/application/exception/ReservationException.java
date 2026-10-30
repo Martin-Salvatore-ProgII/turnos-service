@@ -11,7 +11,8 @@ public class ReservationException extends RuntimeException {
 		PROFESSIONAL_NOT_FOUND,
 		PROFESSIONAL_DISABLED,
 		INVALID_SLOT,
-		ACTIVE_RESERVATION_EXISTS
+		ACTIVE_RESERVATION_EXISTS,
+		RESERVATION_NOT_FOUND
 	}
 
 	private final Code code;

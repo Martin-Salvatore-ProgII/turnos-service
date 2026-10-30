@@ -12,6 +12,10 @@ public interface ReservationProcessRepository {
 	// (ADR-0024, ADR-0070).
 	ReservationProcess create(ReservationProcess process);
 
+	// El proceso, solo si es de ese usuario. Uno de otro usuario da vacío, igual que uno inexistente
+	// (arq/seguridad.md).
+	Optional<ReservationProcess> findByIdAndUserId(UUID id, Long userId);
+
 	// Si el usuario tiene algún proceso en un estado no final.
 	boolean existsActiveByUserId(Long userId);
 
