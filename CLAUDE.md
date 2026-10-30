@@ -28,9 +28,10 @@ Las pruebas necesitan Docker en ejecución (PostgreSQL real y la cátedra simula
 - **`shared/infrastructure/config`:** `JwtConfig` (claves, firma y validación), `SecurityConfig` (reglas de acceso y CORS), `JpaAuditingConfig`, y la integración con la cátedra: `CatedraRestClientConfig` (cliente con el JWT técnico y timeouts) y `CatedraIntegrationConfig` (pide la integración al arrancar; sin ella no arranca, ADR-0005). `CatalogRestClientConfig` arma el cliente del catálogo, que reenvía el JWT del usuario tomado del `SecurityContext` (ADR-0034).
 - **`shared/infrastructure/rest`:** `RemoteReadRetry`, el reintento de toda lectura a la cátedra o al catálogo, y `CatedraReadExecutor`, que le suma los errores propios de la cátedra (ADR-0029, ADR-0063).
 - **`shared/infrastructure/web`:** `GlobalExceptionHandler` y la validación `@MaxBytes`.
-- **Migración `V1`:** tablas `app_user`, `authority` y `app_user_authority`.
+- **Feature `reservation` (en construcción, M4):** el proceso de reserva y su máquina de estados. `ReservationTrigger` tiene una constante por fila de la tabla de transiciones de `docs/arq/maquina-estados.md`, y `ReservationProcess.apply` solo cambia el estado si el disparador vale desde el actual (ADR-0023). El proceso lleva `version` con `@Version`: un cambio sobre una lectura vieja no se guarda y el adaptador lanza `ReservationProcessConflictException` (ADR-0068). `ReservationProcessTest` prueba las 140 combinaciones contra una tabla escrita a mano: si cambia una transición, cambian el documento y esa tabla.
+- **Migraciones:** `V1` con `app_user`, `authority` y `app_user_authority`; `V2` con `reservation_process`.
 
-Todavía no hay: reservas ni Kafka. Tampoco HTTPS (ADR-0035).
+Todavía no hay: endpoints de reservas ni Kafka. Tampoco HTTPS (ADR-0035).
 
 ## Lo propio de este servicio
 

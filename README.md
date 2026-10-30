@@ -150,6 +150,7 @@ com.example.turnos
 ├── user/          feature de usuarios finales
 ├── catalog/       la agenda vigente pedida al servicio de catálogo (sin casos de uso: la usan otras features por su puerto)
 ├── availability/  disponibilidad de turnos: el cálculo, los slots y el cliente de ocupaciones de la cátedra
+├── reservation/   el proceso de reserva: su tabla, sus estados y la regla de cuándo cambia de uno a otro
 └── shared/        configuración (cliente e integración de la cátedra, seguridad) y manejo de errores comunes
 ```
 
