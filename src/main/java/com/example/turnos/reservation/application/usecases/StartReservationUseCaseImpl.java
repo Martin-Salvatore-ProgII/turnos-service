@@ -13,6 +13,7 @@ import com.example.turnos.availability.domain.model.Slot;
 import com.example.turnos.catalog.domain.model.ProfessionalAgenda;
 import com.example.turnos.catalog.domain.ports.out.CatalogClientPort;
 import com.example.turnos.reservation.application.exception.ReservationException;
+import com.example.turnos.reservation.domain.model.ConfirmationResult;
 import com.example.turnos.reservation.domain.model.HoldResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
@@ -38,8 +39,9 @@ public class StartReservationUseCaseImpl implements StartReservationUseCase {
 	private final AvailabilityHorizon availabilityHorizon;
 	private final Clock clock;
 
-	// El orden es el de CU-04: todo lo que se puede rechazar sin la cátedra se rechaza antes de guardar
-	// nada. Si el catálogo no responde, su excepción sigue de largo y no se inicia la reserva (3a).
+	// El orden es el de CU-04, pasos 3 a 6: todo lo que se puede rechazar sin la cátedra se rechaza
+	// antes de guardar nada. Si el catálogo no responde, su excepción sigue de largo y no se inicia la
+	// reserva (3a).
 	// No hay una transacción alrededor: cada guardado se confirma solo, para que el proceso quede en la
 	// base antes de llamar a la cátedra y no se tenga la base ocupada mientras se espera la respuesta.
 	@Override
@@ -73,7 +75,11 @@ public class StartReservationUseCaseImpl implements StartReservationUseCase {
 				.startTime(slot.getStartTime())
 				.endTime(slot.getEndTime())
 				.build());
-		return requestHold(process, user);
+		ReservationProcess held = requestHold(process, user);
+		if (held.getStatus() != ReservationStatus.HELD) {
+			return held;
+		}
+		return confirmHold(held, user);
 	}
 
 	// El slot tiene que salir de la agenda vigente para ese día, con la misma regla que la
@@ -105,6 +111,39 @@ public class StartReservationUseCaseImpl implements StartReservationUseCase {
 			process.apply(ReservationTrigger.HOLD_FAILED);
 			process.setFailureReason(result.getFailureReason());
 		}
+		return save(process);
+	}
+
+	// La confirmación no necesita nada del usuario: va enseguida del hold (ADR-0019), con los datos del
+	// paciente que ya tiene el servicio. Si no hubo respuesta, el proceso queda en HELD sin cambios: la
+	// cátedra pudo haberla recibido y no se puede cerrar como fallido (ADR-0029).
+	private ReservationProcess confirmHold(ReservationProcess process, User user) {
+		ConfirmationResult result = holdPort.confirmHold(process.getHoldId(), user.getExternalPatientId(),
+				user.getFirstName(), user.getLastName());
+		switch (result.getOutcome()) {
+			case ACCEPTED -> {
+				process.apply(ReservationTrigger.CONFIRMATION_ACCEPTED);
+				// Una confirmación repetida no trae el vencimiento: sigue valiendo el del hold.
+				if (result.getExpiresAt() != null) {
+					process.setExpiresAt(result.getExpiresAt());
+				}
+			}
+			case EXPIRED -> {
+				process.apply(ReservationTrigger.CONFIRMATION_EXPIRED);
+				process.setFailureReason(result.getFailureReason());
+			}
+			case REJECTED -> {
+				process.apply(ReservationTrigger.CONFIRMATION_REJECTED);
+				process.setFailureReason(result.getFailureReason());
+			}
+			case NO_RESPONSE -> {
+				return process;
+			}
+		}
+		return save(process);
+	}
+
+	private ReservationProcess save(ReservationProcess process) {
 		return reservationProcessRepository.update(process.getId(), process)
 				.orElseThrow(() -> new IllegalStateException("Reservation process " + process.getId() + " disappeared"));
 	}
