@@ -6,7 +6,7 @@ Es uno de los tres repositorios de la entrega, junto con `catalogo-service` y `a
 
 ## Estado
 
-Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Al arrancar obtiene de la cátedra la configuración de la integración; sin ella no arranca. Disponibilidad de turnos de un profesional para una fecha (`GET /api/availability?professionalId=&date=`), armada con su agenda vigente (pedida al catálogo reenviando el JWT del usuario) y las ocupaciones de la cátedra. Faltan las reservas.
+Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Al arrancar obtiene de la cátedra la configuración de la integración; sin ella no arranca. Disponibilidad de turnos de un profesional para una fecha (`GET /api/availability?professionalId=&date=`), armada con su agenda vigente (pedida al catálogo reenviando el JWT del usuario) y las ocupaciones de la cátedra. Inicio de una reserva (`POST /api/reservations`, con el profesional, la fecha y la hora): valida el turno con la agenda vigente, crea el hold en la cátedra y lo confirma, y responde la reserva en el estado en que quedó. Consulta de una reserva propia (`GET /api/reservations/{id}`), la que la app repite mientras el proceso avanza; la de otro usuario responde 404. Faltan el paso del teléfono por Kafka, el listado y la cancelación.
 
 ## Requisitos
 
