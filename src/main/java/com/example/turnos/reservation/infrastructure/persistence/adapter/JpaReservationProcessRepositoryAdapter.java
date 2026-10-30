@@ -47,6 +47,12 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
 	}
 
 	@Override
+	public Optional<ReservationProcess> findByIdAndUserId(UUID id, Long userId) {
+		return jpaReservationProcessRepository.findByIdAndUserId(id, userId)
+				.map(reservationProcessMapper::toDomainModel);
+	}
+
+	@Override
 	public boolean existsActiveByUserId(Long userId) {
 		return jpaReservationProcessRepository.existsByUserIdAndStatusIn(userId, ReservationStatus.active());
 	}

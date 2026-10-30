@@ -19,6 +19,24 @@ public final class FakeCatedra {
 	/** El ejemplo de ocupaciones de la REF §8: una CONFIRMED y una HELD del profesional 15 el 2026-09-14. */
 	public static final String OCCUPANCIES_REF = "catedra/occupancies-ref.json";
 
+	/** Opción de WireMock para responder solo HTTP/1.1, como la cátedra real. */
+	public static final String HTTP_1_ONLY = "--disable-http2-plain";
+
+	/** La ruta de la confirmación inicial de un hold (REF §10). */
+	public static String confirmUrl(String holdId) {
+		return "/api/appointment-holds/" + holdId + "/confirm";
+	}
+
+	/** Respuesta a un POST con el status y el cuerpo dados (tal cual, como texto). */
+	public static ObjectNode postMapping(String url, int status, String body) {
+		ObjectNode mapping = JSON.createObjectNode();
+		mapping.putObject("request").put("method", "POST").put("url", url);
+		ObjectNode response = mapping.putObject("response").put("status", status);
+		response.putObject("headers").put("Content-Type", status < 300 ? "application/json" : "application/problem+json");
+		response.put("body", body);
+		return mapping;
+	}
+
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	private FakeCatedra() {
@@ -39,9 +57,14 @@ public final class FakeCatedra {
 		return mapping;
 	}
 
-	/** Contenedor que ya arranca respondiendo como la cátedra real: la integración en estado PROVISIONED. */
+	/**
+	 * Contenedor que ya arranca respondiendo como la cátedra real: la integración en estado PROVISIONED
+	 * y solo HTTP/1.1. WireMock acepta pasar a HTTP/2 y la cátedra real no (probado con
+	 * {@code curl --http2}); en ese modo, los POST del cliente de Java se cortan.
+	 */
 	public static GenericContainer<?> newContainerLikeTheCatedra() {
 		return FakeServer.newContainer()
+				.withCommand(HTTP_1_ONLY)
 				.withCopyFileToContainer(MountableFile.forClasspathResource(INTEGRATION_MAPPING),
 						FakeServer.MAPPINGS_DIR + "integration.json");
 	}
