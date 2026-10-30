@@ -29,6 +29,12 @@ turnos:
     # TURNOS_CATALOG_CONNECT_TIMEOUT y TURNOS_CATALOG_READ_TIMEOUT.
     connect-timeout: 2s
     read-timeout: 5s
+  command-retry:
+    # Operaciones con efectos que son seguras de repetir: la confirmación inicial y, más adelante, la
+    # cancelación (ADR-0029, RNF-09). Hasta 2 reintentos, esperando 500 ms y después 1 s. Se pueden
+    # cambiar con TURNOS_COMMAND_RETRY_RETRIES y TURNOS_COMMAND_RETRY_INITIAL_BACKOFF.
+    retries: 2
+    initial-backoff: 500ms
   availability:
     # Cuántos días hacia adelante acepta la disponibilidad de turnos (ADR-0015, ADR-0065, RNF-09). Tiene
     # que valer lo mismo que en el catálogo. Se puede cambiar con TURNOS_AVAILABILITY_HORIZON_DAYS.
