@@ -33,9 +33,8 @@ import tools.jackson.databind.node.ObjectNode;
 // El timeout de respuesta es corto para que la prueba de demora no tarde.
 class CatedraHoldAdapterTest {
 
-	// Solo HTTP/1.1, como la cátedra real: WireMock acepta pasar a HTTP/2, y en ese modo corta los POST
-	// del cliente de Java. La cátedra real no pasa a HTTP/2 (probado con curl --http2).
-	private static final GenericContainer<?> catedra = FakeServer.newContainer().withCommand("--disable-http2-plain");
+	// Solo HTTP/1.1, como la cátedra real (ver FakeCatedra.HTTP_1_ONLY).
+	private static final GenericContainer<?> catedra = FakeServer.newContainer().withCommand(FakeCatedra.HTTP_1_ONLY);
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	private static final LocalDate DATE = LocalDate.parse("2026-11-30");
