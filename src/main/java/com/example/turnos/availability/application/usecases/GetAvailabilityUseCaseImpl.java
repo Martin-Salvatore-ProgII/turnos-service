@@ -57,9 +57,7 @@ public class GetAvailabilityUseCaseImpl implements GetAvailabilityUseCase {
 		// Un TreeMap por hora de inicio deja los slots ordenados aunque el día tenga varios horarios, y
 		// si dos horarios se superpusieran, el mismo turno no aparece dos veces.
 		TreeMap<LocalTime, Slot> free = new TreeMap<>();
-		agenda.getWeeklySchedules().stream()
-				.filter(schedule -> schedule.getDayOfWeek() == date.getDayOfWeek())
-				.flatMap(schedule -> ScheduleSlots.of(schedule).stream())
+		ScheduleSlots.ofDay(agenda, date).stream()
 				.filter(slot -> !slot.getStartTime().isBefore(notBefore))
 				.filter(slot -> !occupied.contains(slot.getStartTime()))
 				.forEach(slot -> free.putIfAbsent(slot.getStartTime(), slot));
@@ -74,13 +72,12 @@ public class GetAvailabilityUseCaseImpl implements GetAvailabilityUseCase {
 				.build();
 	}
 
-	// Entre hoy y el horizonte, ambos incluidos (ADR-0015, ADR-0065), con el mismo código que la
-	// búsqueda del catálogo. "Hoy" es el de Argentina: a la 1 de la mañana UTC del día 3 todavía es 2.
+	// Con el mismo código que la búsqueda del catálogo. "Hoy" es el de Argentina: a la 1 de la mañana
+	// UTC del día 3 todavía es 2.
 	private void checkDateInRange(LocalDate date, LocalDate today) {
-		LocalDate last = today.plusDays(availabilityHorizon.getDays());
-		if (date.isBefore(today) || date.isAfter(last)) {
+		if (!availabilityHorizon.includes(date, today)) {
 			throw new AvailabilityException(AvailabilityException.Code.DATE_OUT_OF_RANGE,
-					"Date " + date + " must be between " + today + " and " + last);
+					"Date " + date + " must be between " + today + " and " + availabilityHorizon.lastDay(today));
 		}
 	}
 

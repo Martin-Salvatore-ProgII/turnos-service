@@ -150,7 +150,7 @@ com.example.turnos
 ├── user/          feature de usuarios finales
 ├── catalog/       la agenda vigente pedida al servicio de catálogo (sin casos de uso: la usan otras features por su puerto)
 ├── availability/  disponibilidad de turnos: el cálculo, los slots y el cliente de ocupaciones de la cátedra
-├── reservation/   el proceso de reserva: su tabla, sus estados y la regla de cuándo cambia de uno a otro
+├── reservation/   el proceso de reserva: su tabla, sus estados, el inicio de la reserva y el cliente de holds de la cátedra
 └── shared/        configuración (cliente e integración de la cátedra, seguridad) y manejo de errores comunes
 ```
 
@@ -160,13 +160,14 @@ Lo que sirve a más de una feature se lleva a `shared` en cuanto aparece el segu
 
 | Pieza | Qué hace | La usan |
 | --- | --- | --- |
-| `config/CatedraRestClientConfig` | Cliente HTTP de la cátedra, con el JWT técnico y los timeouts | Integración al arrancar, `availability` (ocupaciones) |
+| `config/CatedraRestClientConfig` | Cliente HTTP de la cátedra, con el JWT técnico y los timeouts | Integración al arrancar, `availability` (ocupaciones), `reservation` (holds) |
 | `rest/RemoteReadRetry` | El reintento de toda lectura a un servicio externo: un intento más si no responde o falla de su lado (ADR-0029), con mensajes sin su dirección | `CatedraReadExecutor`, `catalog` |
 | `rest/CatedraReadExecutor` | Lectura a la cátedra: el reintento de `RemoteReadRetry` y los errores propios de la cátedra | Integración al arrancar, `availability` (ocupaciones) |
+| `rest/ProblemDto` | Lee el `code` de un error `problem+json` del catálogo o de la cátedra | `catalog`, `reservation` (holds) |
 | `config/CatalogRestClientConfig` | Cliente HTTP del catálogo, con los timeouts y el JWT del usuario reenviado (ADR-0034) | `catalog` |
 | `config/CatedraIntegrationConfig` | Pide la integración al arrancar; sin ella, el servicio no arranca (ADR-0005) | Kafka, desde la M5 |
 | `config/JwtConfig`, `config/SecurityConfig` | Emisión y validación del JWT de usuario, y reglas de acceso | Todos los endpoints |
 | `web/advice/GlobalExceptionHandler` | Errores `problem+json`; todo 400 sin código propio es `VALIDATION_ERROR` | Todos los endpoints, `catalog` (`503 CATALOG_UNAVAILABLE` y el 401 de un token rechazado), `availability` (`DATE_OUT_OF_RANGE`, `PROFESSIONAL_DISABLED`, `PROFESSIONAL_NOT_FOUND`, `503 INTEGRATION_UNAVAILABLE`) |
-| `config/ClockConfig` | La hora como `Clock` inyectado, para poder fijarla en las pruebas | `availability` |
-| `config/AvailabilityConfig` | Pasa al dominio el horizonte de fechas configurable (ADR-0065, RNF-09) | `availability` |
+| `config/ClockConfig` | La hora como `Clock` inyectado, para poder fijarla en las pruebas | `availability`, `reservation` |
+| `config/AvailabilityConfig` | Pasa al dominio el horizonte de fechas configurable (ADR-0065, RNF-09) | `availability`, `reservation` |
 | `web/validation/MaxBytes` | Límite de largo en bytes de un campo de texto (ADR-0057) | `user` (contraseña) |
