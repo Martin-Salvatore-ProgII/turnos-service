@@ -10,11 +10,14 @@ import java.util.UUID;
 
 import com.example.turnos.FakeCatedra;
 import com.example.turnos.FakeServer;
+import com.example.turnos.reservation.domain.model.ConfirmationResult;
 import com.example.turnos.reservation.domain.model.HoldResult;
 import com.example.turnos.reservation.domain.model.ReservationFailureReason;
 import com.example.turnos.reservation.infrastructure.rest.mapper.HoldMapper;
 import com.example.turnos.shared.infrastructure.config.CatedraProperties;
+import com.example.turnos.shared.infrastructure.config.CommandRetryProperties;
 import com.example.turnos.shared.infrastructure.config.CatedraRestClientConfig;
+import com.example.turnos.shared.infrastructure.rest.RemoteCommandRetry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,7 +28,7 @@ import org.testcontainers.containers.GenericContainer;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-// El cliente del hold contra una cátedra falsa (WireMock), sin Spring. Las respuestas son las que dio
+// El cliente del hold y de su confirmación contra una cátedra falsa (WireMock), sin Spring. Las respuestas son las que dio
 // la cátedra real con ./probar-reserva-catedra.sh (status, code y forma), con los valores de la REF §9.
 // El timeout de respuesta es corto para que la prueba de demora no tarde.
 class CatedraHoldAdapterTest {
@@ -38,6 +41,10 @@ class CatedraHoldAdapterTest {
 	private static final LocalDate DATE = LocalDate.parse("2026-11-30");
 	private static final LocalTime START = LocalTime.parse("12:00");
 	private static final UUID PATIENT = UUID.fromString("0f8fad5b-d9cb-469f-a165-70867728950e");
+	private static final String CONFIRM_URL = "/api/appointment-holds/hold-1/confirm";
+	private static final String ACCEPTED_BODY = """
+			{ "reservationProcessId": "process-1", "status": "WAITING_FOR_PHONE", "expiresAt": "2026-09-10T14:44:50Z" }
+			""";
 
 	@BeforeAll
 	static void startCatedra() {
@@ -155,6 +162,124 @@ class CatedraHoldAdapterTest {
 		assertUnavailable(createHold(unreachable));
 	}
 
+	@Test
+	void anAcceptedConfirmationReturnsTheNewExpiration() {
+		// La cátedra falsa solo responde 202 si el cuerpo y el encabezado son los de la REF §10.
+		ObjectNode mapping = mapping("POST", CONFIRM_URL, 202, ACCEPTED_BODY, 0);
+		ObjectNode request = (ObjectNode) mapping.get("request");
+		request.putObject("headers").putObject("Authorization").put("equalTo", "Bearer " + FakeCatedra.TECHNICAL_TOKEN);
+		request.putArray("bodyPatterns").addObject().put("equalToJson", """
+				{ "externalPatientId": "0f8fad5b-d9cb-469f-a165-70867728950e", "patientFirstName": "Juan",
+				  "patientLastName": "Perez" }
+				""");
+		FakeServer.stub(catedra, mapping.toString());
+
+		ConfirmationResult result = confirmHold(adapter());
+
+		assertThat(result.getOutcome()).isEqualTo(ConfirmationResult.Outcome.ACCEPTED);
+		assertThat(result.getExpiresAt()).isEqualTo(Instant.parse("2026-09-10T14:44:50Z"));
+	}
+
+	@Test
+	void anAlreadyConfirmedProcessIsAccepted() {
+		// Es la respuesta a una confirmación repetida: prueba que la anterior llegó (ADR-0029).
+		stubConfirmation(409, problem(409, "RESERVATION_PROCESS_ALREADY_CONFIRMED"), 0);
+
+		ConfirmationResult result = confirmHold(adapter());
+
+		assertThat(result.getOutcome()).isEqualTo(ConfirmationResult.Outcome.ACCEPTED);
+		assertThat(result.getExpiresAt()).isNull();
+	}
+
+	@Test
+	void anExpiredHoldIsExpired() {
+		stubConfirmation(404, problem(404, "HOLD_EXPIRED"), 0);
+
+		ConfirmationResult result = confirmHold(adapter());
+
+		assertThat(result.getOutcome()).isEqualTo(ConfirmationResult.Outcome.EXPIRED);
+		assertThat(result.getFailureReason()).isEqualTo("HOLD_EXPIRED");
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "404, HOLD_NOT_FOUND", "400, EXTERNAL_PATIENT_MISMATCH", "409, SLOT_ALREADY_RESERVED",
+			"400, INVALID_SLOT", "404, PROFESSIONAL_NOT_FOUND" })
+	void aRejectedConfirmationKeepsTheCodeOfTheCatedra(int status, String code) {
+		stubConfirmation(status, problem(status, code), 0);
+
+		ConfirmationResult result = confirmHold(adapter());
+
+		assertThat(result.getOutcome()).isEqualTo(ConfirmationResult.Outcome.REJECTED);
+		assertThat(result.getFailureReason()).isEqualTo(code);
+		assertThat(requests("POST", CONFIRM_URL)).isEqualTo(1);
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "400, VALIDATION_ERROR", "403, HOLD_OWNER_MISMATCH", "403, STUDENT_INTEGRATION_NOT_FOUND" })
+	void aConfirmationErrorThatIsNotAboutTheHoldIsUnavailable(int status, String code) {
+		stubConfirmation(status, problem(status, code), 0);
+
+		ConfirmationResult result = confirmHold(adapter());
+
+		assertThat(result.getOutcome()).isEqualTo(ConfirmationResult.Outcome.REJECTED);
+		assertThat(result.getFailureReason()).isEqualTo(ReservationFailureReason.INTEGRATION_UNAVAILABLE);
+	}
+
+	@Test
+	void aConfirmationWithoutAnswerIsTriedThreeTimes() {
+		stubConfirmation(503, "", 0);
+
+		ConfirmationResult result = confirmHold(adapter());
+
+		assertThat(result.getOutcome()).isEqualTo(ConfirmationResult.Outcome.NO_RESPONSE);
+		assertThat(requests("POST", CONFIRM_URL)).isEqualTo(3);
+	}
+
+	@Test
+	void aConfirmationRecoversWhenTheCatedraAnswersOnARetry() {
+		// Escenario de WireMock: el primer pedido falla del lado de la cátedra y el segundo responde 202.
+		stubScenario(503, "", 0, ACCEPTED_BODY);
+
+		ConfirmationResult result = confirmHold(adapter());
+
+		assertThat(result.getOutcome()).isEqualTo(ConfirmationResult.Outcome.ACCEPTED);
+		assertThat(requests("POST", CONFIRM_URL)).isEqualTo(2);
+	}
+
+	@Test
+	void aConfirmationWhoseAnswerWasLostIsAcceptedOnTheRetry() {
+		// El caso del ADR-0029: el primer pedido llega pero la respuesta tarda más que el timeout; al
+		// repetirlo, la cátedra responde ALREADY_CONFIRMED.
+		stubScenario(202, ACCEPTED_BODY, 1500, null);
+
+		ConfirmationResult result = confirmHold(adapter());
+
+		assertThat(result.getOutcome()).isEqualTo(ConfirmationResult.Outcome.ACCEPTED);
+		assertThat(requests("POST", CONFIRM_URL)).isEqualTo(2);
+	}
+
+	private static ConfirmationResult confirmHold(CatedraHoldAdapter adapter) {
+		return adapter.confirmHold("hold-1", PATIENT, "Juan", "Perez");
+	}
+
+	private static void stubConfirmation(int status, String body, int delayMillis) {
+		FakeServer.stub(catedra, mapping("POST", CONFIRM_URL, status, body, delayMillis).toString());
+	}
+
+	// El primer pedido responde con status, cuerpo y demora dados; los siguientes, 202 con secondBody, o
+	// ALREADY_CONFIRMED si secondBody es null.
+	private static void stubScenario(int status, String body, int delayMillis, String secondBody) {
+		ObjectNode first = mapping("POST", CONFIRM_URL, status, body, delayMillis);
+		first.put("scenarioName", "confirmacion").put("requiredScenarioState", "Started")
+				.put("newScenarioState", "segundo");
+		FakeServer.stub(catedra, first.toString());
+		ObjectNode second = secondBody == null
+				? mapping("POST", CONFIRM_URL, 409, problem(409, "RESERVATION_PROCESS_ALREADY_CONFIRMED"), 0)
+				: mapping("POST", CONFIRM_URL, 202, secondBody, 0);
+		second.put("scenarioName", "confirmacion").put("requiredScenarioState", "segundo");
+		FakeServer.stub(catedra, second.toString());
+	}
+
 	private static void assertUnavailable(HoldResult result) {
 		assertThat(result.isCreated()).isFalse();
 		assertThat(result.getFailureReason()).isEqualTo(ReservationFailureReason.INTEGRATION_UNAVAILABLE);
@@ -177,8 +302,12 @@ class CatedraHoldAdapterTest {
 	}
 
 	private static ObjectNode mapping(int status, String body, int delayMillis) {
+		return mapping("POST", CatedraHoldAdapter.HOLDS_PATH, status, body, delayMillis);
+	}
+
+	private static ObjectNode mapping(String method, String url, int status, String body, int delayMillis) {
 		ObjectNode mapping = JSON.createObjectNode();
-		mapping.putObject("request").put("method", "POST").put("url", CatedraHoldAdapter.HOLDS_PATH);
+		mapping.putObject("request").put("method", method).put("url", url);
 		ObjectNode response = mapping.putObject("response").put("status", status);
 		response.putObject("headers").put("Content-Type", status < 300 ? "application/json" : "application/problem+json");
 		response.put("body", body);
@@ -189,7 +318,11 @@ class CatedraHoldAdapterTest {
 	}
 
 	private static int requests() {
-		return FakeServer.countRequests(catedra, "POST", CatedraHoldAdapter.HOLDS_PATH);
+		return requests("POST", CatedraHoldAdapter.HOLDS_PATH);
+	}
+
+	private static int requests(String method, String url) {
+		return FakeServer.countRequests(catedra, method, url);
 	}
 
 	private static CatedraHoldAdapter adapter() {
@@ -199,7 +332,10 @@ class CatedraHoldAdapterTest {
 	private static CatedraHoldAdapter adapter(String baseUrl) {
 		CatedraProperties properties = new CatedraProperties(baseUrl, FakeCatedra.TECHNICAL_TOKEN,
 				Duration.ofSeconds(1), Duration.ofMillis(500));
-		return new CatedraHoldAdapter(new CatedraRestClientConfig().catedraRestClient(properties), new HoldMapper());
+		// Esperas de pocos milisegundos entre reintentos, para que las pruebas no tarden.
+		RemoteCommandRetry retry = new RemoteCommandRetry(new CommandRetryProperties(2, Duration.ofMillis(10)));
+		return new CatedraHoldAdapter(new CatedraRestClientConfig().catedraRestClient(properties), retry,
+				new HoldMapper());
 	}
 
 }

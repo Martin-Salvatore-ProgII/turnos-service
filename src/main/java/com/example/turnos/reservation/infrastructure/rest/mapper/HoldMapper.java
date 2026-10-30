@@ -5,6 +5,7 @@ import java.time.LocalTime;
 import java.util.UUID;
 
 import com.example.turnos.reservation.domain.model.Hold;
+import com.example.turnos.reservation.infrastructure.rest.dto.ConfirmationRequest;
 import com.example.turnos.reservation.infrastructure.rest.dto.HoldRequest;
 import com.example.turnos.reservation.infrastructure.rest.dto.HoldResponse;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,15 @@ public class HoldMapper {
 				.date(date)
 				.startTime(startTime)
 				.externalPatientId(externalPatientId == null ? null : externalPatientId.toString())
+				.build();
+	}
+
+	public ConfirmationRequest toConfirmationRequest(UUID externalPatientId, String patientFirstName,
+			String patientLastName) {
+		return ConfirmationRequest.builder()
+				.externalPatientId(externalPatientId == null ? null : externalPatientId.toString())
+				.patientFirstName(patientFirstName)
+				.patientLastName(patientLastName)
 				.build();
 	}
 
