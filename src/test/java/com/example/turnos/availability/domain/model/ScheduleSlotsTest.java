@@ -3,9 +3,11 @@ package com.example.turnos.availability.domain.model;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
+import com.example.turnos.catalog.domain.model.ProfessionalAgenda;
 import com.example.turnos.catalog.domain.model.WeeklySchedule;
 import org.junit.jupiter.api.Test;
 
@@ -51,10 +53,32 @@ class ScheduleSlotsTest {
 		assertThat(starts(ScheduleSlots.of(schedule("23:00", "23:59", 30)))).containsExactly("23:00");
 	}
 
+	@Test
+	void theSlotsOfADayAreTheOnesOfEveryScheduleOfThatDayOfTheWeek() {
+		// 2026-11-09 es lunes: cuentan los dos horarios del lunes y no el del martes.
+		ProfessionalAgenda agenda = ProfessionalAgenda.builder().weeklySchedules(List.of(
+				schedule(DayOfWeek.MONDAY, "09:00", "10:00", 30),
+				schedule(DayOfWeek.TUESDAY, "09:00", "10:00", 30),
+				schedule(DayOfWeek.MONDAY, "14:00", "15:00", 60))).build();
+
+		assertThat(starts(ScheduleSlots.ofDay(agenda, LocalDate.parse("2026-11-09"))))
+				.containsExactly("09:00", "09:30", "14:00");
+		assertThat(ScheduleSlots.ofDay(agenda, LocalDate.parse("2026-11-11"))).isEmpty();
+	}
+
+	@Test
+	void anAgendaWithoutSchedulesHasNoSlots() {
+		assertThat(ScheduleSlots.ofDay(ProfessionalAgenda.builder().build(), LocalDate.parse("2026-11-09"))).isEmpty();
+	}
+
 	private static WeeklySchedule schedule(String start, String end, int duration) {
+		return schedule(DayOfWeek.MONDAY, start, end, duration);
+	}
+
+	private static WeeklySchedule schedule(DayOfWeek day, String start, String end, int duration) {
 		return WeeklySchedule.builder()
 				.id(1L)
-				.dayOfWeek(DayOfWeek.MONDAY)
+				.dayOfWeek(day)
 				.startTime(LocalTime.parse(start))
 				.endTime(LocalTime.parse(end))
 				.slotDurationMinutes(duration)
