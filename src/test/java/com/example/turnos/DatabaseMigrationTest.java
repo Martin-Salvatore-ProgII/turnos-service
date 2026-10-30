@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Verifica que las migraciones de Flyway dejan el esquema esperado en PostgreSQL.
@@ -30,6 +31,33 @@ class DatabaseMigrationTest {
 				.list();
 
 		assertThat(tables).contains("app_user", "authority", "app_user_authority");
+	}
+
+	@Test
+	void createsReservationProcessTable() {
+		List<String> tables = jdbcClient
+				.sql("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+				.query(String.class)
+				.list();
+
+		assertThat(tables).contains("reservation_process");
+	}
+
+	// Transaccional para que el usuario insertado se deshaga y no choque con otras pruebas.
+	@Test
+	@Transactional
+	void rejectsAnUnknownReservationStatus() {
+		insertUser("juan", "juan@example.com");
+
+		assertThatThrownBy(() -> jdbcClient.sql("""
+				INSERT INTO reservation_process (id, user_id, status, professional_id, professional_first_name,
+						professional_last_name, appointment_date, start_time, end_time, created_at, updated_at, version)
+				SELECT gen_random_uuid(), id, 'PENDING', 15, 'Ana', 'Gomez', DATE '2026-11-16', TIME '10:00',
+						TIME '10:30', now(), now(), 0
+				FROM app_user WHERE login = 'juan'
+				""").update())
+				.isInstanceOf(DataIntegrityViolationException.class)
+				.hasMessageContaining("ck_reservation_process_status");
 	}
 
 	@Test
