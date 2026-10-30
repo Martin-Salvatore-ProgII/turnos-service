@@ -28,6 +28,10 @@ services:
       DB_USER: ${TURNOS_DB_USER}
       DB_PASSWORD: ${TURNOS_DB_PASSWORD}
       JWT_PRIVATE_KEY_LOCATION: file:/run/secrets/jwt-private.pem
+      CATEDRA_API_URL: ${TURNOS_CATEDRA_API_URL}
+      CATEDRA_TECHNICAL_TOKEN: ${TURNOS_CATEDRA_TECHNICAL_TOKEN}
+      # El catálogo, por la red interna de Compose: su puerto dentro del contenedor.
+      CATALOG_API_URL: http://catalogo-service:8080
       ADMIN_LOGIN: ${TURNOS_ADMIN_LOGIN:-}
       ADMIN_PASSWORD: ${TURNOS_ADMIN_PASSWORD:-}
       ADMIN_EMAIL: ${TURNOS_ADMIN_EMAIL:-}

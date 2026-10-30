@@ -1,0 +1,8 @@
+{
+	"detail": "Could not find professional with id: 9999",
+	"instance": "/api/professionals/9999/agenda",
+	"status": 404,
+	"title": "Not Found",
+	"code": "PROFESSIONAL_NOT_FOUND",
+	"path": "/api/professionals/9999/agenda"
+}

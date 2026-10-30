@@ -1,0 +1,19 @@
+{
+	"professionalId": 15,
+	"from": "2026-09-14",
+	"to": "2026-09-14",
+	"occupancies": [
+		{
+			"date": "2026-09-14",
+			"startTime": "09:00:00",
+			"status": "CONFIRMED",
+			"expiresAt": null
+		},
+		{
+			"date": "2026-09-14",
+			"startTime": "09:30:00",
+			"status": "HELD",
+			"expiresAt": "2026-09-10T14:44:50Z"
+		}
+	]
+}

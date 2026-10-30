@@ -1,0 +1,12 @@
+{
+	"id": 206,
+	"firstName": "Carolina",
+	"lastName": "Molina",
+	"category": {
+		"id": 102,
+		"name": "Pediatria"
+	},
+	"enabled": false,
+	"weeklySchedules": [],
+	"catalogVersion": 1
+}

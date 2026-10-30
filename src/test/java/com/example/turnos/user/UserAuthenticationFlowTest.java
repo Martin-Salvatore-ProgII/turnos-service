@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.example.turnos.TestCatalogConfiguration;
+import com.example.turnos.TestCatedraConfiguration;
 import com.example.turnos.TestJwtKeysConfiguration;
 import com.example.turnos.TestcontainersConfiguration;
 import com.jayway.jsonpath.JsonPath;
@@ -37,7 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 		"turnos.security.admin.password=clave-de-admin",
 		"turnos.security.admin.email=admin@example.com" })
 @AutoConfigureMockMvc
-@Import({ TestcontainersConfiguration.class, TestJwtKeysConfiguration.class, UserAuthenticationFlowTest.TestController.class })
+@Import({ TestcontainersConfiguration.class, TestJwtKeysConfiguration.class, TestCatedraConfiguration.class, TestCatalogConfiguration.class, UserAuthenticationFlowTest.TestController.class })
 class UserAuthenticationFlowTest {
 
 	private static final String PASSWORD = "secret-1234";
