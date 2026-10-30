@@ -9,6 +9,7 @@ import java.time.LocalTime;
 import java.util.UUID;
 
 import com.example.turnos.TestcontainersConfiguration;
+import com.example.turnos.reservation.application.exception.ReservationException;
 import com.example.turnos.reservation.application.exception.ReservationProcessConflictException;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
@@ -47,13 +48,18 @@ class JpaReservationProcessRepositoryAdapterTest {
 	// depender del adaptador de otra feature.
 	@BeforeEach
 	void insertOwner() {
+		userId = insertUser("juan");
+	}
+
+	private Long insertUser(String login) {
 		entityManager.getEntityManager().createNativeQuery("""
 				INSERT INTO app_user (external_patient_id, login, password_hash, first_name, last_name, email,
 						activated, lang_key, created_by, created_date)
-				VALUES (gen_random_uuid(), 'juan', 'hash', 'Juan', 'Perez', 'juan@example.com', true, 'es', 'test', now())
-				""").executeUpdate();
-		userId = ((Number) entityManager.getEntityManager()
-				.createNativeQuery("SELECT id FROM app_user WHERE login = 'juan'")
+				VALUES (gen_random_uuid(), :login, 'hash', 'Juan', 'Perez', :login || '@example.com', true, 'es', 'test', now())
+				""").setParameter("login", login).executeUpdate();
+		return ((Number) entityManager.getEntityManager()
+				.createNativeQuery("SELECT id FROM app_user WHERE login = :login")
+				.setParameter("login", login)
 				.getSingleResult()).longValue();
 	}
 
@@ -133,10 +139,11 @@ class JpaReservationProcessRepositoryAdapterTest {
 
 	@Test
 	void databaseRejectsADuplicatedReservationProcessId() {
-		ReservationProcess first = startedProcess();
+		// Procesos ya terminados, para que no los rechace el índice de un proceso activo por usuario.
+		ReservationProcess first = finishedProcess();
 		first.setReservationProcessId("process-1");
 		adapter.create(first);
-		ReservationProcess second = startedProcess();
+		ReservationProcess second = finishedProcess();
 		second.setReservationProcessId("process-1");
 
 		assertThatThrownBy(() -> adapter.create(second)).isInstanceOf(DataIntegrityViolationException.class);
@@ -145,9 +152,55 @@ class JpaReservationProcessRepositoryAdapterTest {
 	@Test
 	void databaseAcceptsManyProcessesWithoutReservationProcessId() {
 		// Antes del hold no hay reservationProcessId: la restricción UNIQUE admite varios NULL.
-		adapter.create(startedProcess());
-		adapter.create(startedProcess());
+		adapter.create(finishedProcess());
+		adapter.create(finishedProcess());
 		entityManager.flush();
+	}
+
+	@Test
+	void databaseRejectsASecondActiveProcessOfTheSameUser() {
+		// create no consulta antes: el rechazo es de la base, que es lo que vale ante pedidos
+		// simultáneos (ADR-0070). Se traduce al error funcional.
+		adapter.create(startedProcess());
+
+		assertThatThrownBy(() -> adapter.create(startedProcess()))
+				.isInstanceOf(ReservationException.class)
+				.extracting("code").isEqualTo(ReservationException.Code.ACTIVE_RESERVATION_EXISTS);
+	}
+
+	@Test
+	void aFinishedProcessDoesNotBlockANewOne() {
+		ReservationProcess first = adapter.create(startedProcess());
+		entityManager.clear();
+		first = read(first.getId());
+		first.setStatus(ReservationStatus.FAILED);
+		adapter.update(first.getId(), first);
+
+		ReservationProcess second = adapter.create(startedProcess());
+
+		assertThat(second.getStatus()).isEqualTo(ReservationStatus.STARTED);
+	}
+
+	@Test
+	void anotherUserCanHaveItsOwnActiveProcess() {
+		adapter.create(startedProcess());
+		ReservationProcess otherUsers = startedProcess();
+		otherUsers.setUserId(insertUser("ana"));
+
+		assertThat(adapter.create(otherUsers).getStatus()).isEqualTo(ReservationStatus.STARTED);
+	}
+
+	@Test
+	void existsActiveCountsOnlyProcessesThatAreNotFinal() {
+		assertThat(adapter.existsActiveByUserId(userId)).isFalse();
+
+		adapter.create(finishedProcess());
+		assertThat(adapter.existsActiveByUserId(userId)).isFalse();
+
+		ReservationProcess active = startedProcess();
+		active.setStatus(ReservationStatus.PHONE_SUBMITTED);
+		adapter.create(active);
+		assertThat(adapter.existsActiveByUserId(userId)).isTrue();
 	}
 
 	@Test
@@ -174,6 +227,12 @@ class JpaReservationProcessRepositoryAdapterTest {
 				.startTime(LocalTime.of(10, 0))
 				.endTime(LocalTime.of(10, 30))
 				.build();
+	}
+
+	private ReservationProcess finishedProcess() {
+		ReservationProcess process = startedProcess();
+		process.setStatus(ReservationStatus.FAILED);
+		return process;
 	}
 
 	// Con todos los campos completos, aunque en la realidad un proceso no los tenga todos a la vez:

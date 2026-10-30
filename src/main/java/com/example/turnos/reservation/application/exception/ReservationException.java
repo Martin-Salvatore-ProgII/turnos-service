@@ -10,7 +10,8 @@ public class ReservationException extends RuntimeException {
 		DATE_OUT_OF_RANGE,
 		PROFESSIONAL_NOT_FOUND,
 		PROFESSIONAL_DISABLED,
-		INVALID_SLOT
+		INVALID_SLOT,
+		ACTIVE_RESERVATION_EXISTS
 	}
 
 	private final Code code;
