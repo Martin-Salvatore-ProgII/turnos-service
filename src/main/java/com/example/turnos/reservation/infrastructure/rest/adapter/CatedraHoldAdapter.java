@@ -1,7 +1,5 @@
 package com.example.turnos.reservation.infrastructure.rest.adapter;
 
-import java.net.http.HttpConnectTimeoutException;
-import java.net.http.HttpTimeoutException;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Set;
@@ -15,6 +13,7 @@ import com.example.turnos.reservation.domain.ports.out.HoldPort;
 import com.example.turnos.reservation.infrastructure.rest.dto.ConfirmationResponse;
 import com.example.turnos.reservation.infrastructure.rest.dto.HoldResponse;
 import com.example.turnos.reservation.infrastructure.rest.mapper.HoldMapper;
+import com.example.turnos.shared.infrastructure.rest.HttpTimeouts;
 import com.example.turnos.shared.infrastructure.rest.ProblemDto;
 import com.example.turnos.shared.infrastructure.rest.RemoteCommandRetry;
 import com.example.turnos.shared.infrastructure.rest.RemoteServiceUnavailableException;
@@ -75,7 +74,7 @@ public class CatedraHoldAdapter implements HoldPort {
 		} catch (HttpServerErrorException e) {
 			return unavailable("HTTP " + e.getStatusCode().value());
 		} catch (ResourceAccessException e) {
-			if (isResponseTimeout(e)) {
+			if (HttpTimeouts.isResponseTimeout(e)) {
 				log.warn("Hold request to the catedra timed out: the hold may exist and will expire on its own");
 				return HoldResult.failed(ReservationFailureReason.INTEGRATION_TIMEOUT);
 			}
@@ -142,20 +141,6 @@ public class CatedraHoldAdapter implements HoldPort {
 	private HoldResult unavailable(String reason) {
 		log.warn("Hold request to the catedra failed ({})", reason);
 		return HoldResult.failed(ReservationFailureReason.INTEGRATION_UNAVAILABLE);
-	}
-
-	// Solo el timeout de respuesta deja la duda de si el hold se creó: el pedido llegó y no se supo el
-	// resultado. Un timeout de conexión es como no tener red: el pedido nunca salió.
-	private static boolean isResponseTimeout(ResourceAccessException e) {
-		for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-			if (cause instanceof HttpConnectTimeoutException) {
-				return false;
-			}
-			if (cause instanceof HttpTimeoutException) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 }

@@ -167,6 +167,8 @@ Lo que sirve a más de una feature se lleva a `shared` en cuanto aparece el segu
 | `rest/RemoteCommandRetry` | El reintento de las operaciones con efectos seguras de repetir: hasta 2 reintentos con espera creciente (ADR-0029), configurables | `reservation` (confirmación inicial) |
 | `rest/CatedraReadExecutor` | Lectura a la cátedra: el reintento de `RemoteReadRetry` y los errores propios de la cátedra | Integración al arrancar, `availability` (ocupaciones) |
 | `rest/ProblemDto` | Lee el `code` de un error `problem+json` del catálogo o de la cátedra | `catalog`, `reservation` (holds) |
+| `rest/NoRetryRequestFactory` | La conexión HTTP de los clientes de la cátedra y del catálogo: timeouts configurados y sin reintentos propios (ADR-0029) | `CatedraRestClientConfig`, `CatalogRestClientConfig` |
+| `rest/HttpTimeouts` | Distingue el timeout de respuesta (la operación pudo hacerse) del de conexión (nunca salió) | `reservation` (holds) |
 | `config/CatalogRestClientConfig` | Cliente HTTP del catálogo, con los timeouts y el JWT del usuario reenviado (ADR-0034) | `catalog` |
 | `config/CatedraIntegrationConfig` | Pide la integración al arrancar; sin ella, el servicio no arranca (ADR-0005) | Kafka, desde la M5 |
 | `config/JwtConfig`, `config/SecurityConfig` | Emisión y validación del JWT de usuario, y reglas de acceso | Todos los endpoints |
