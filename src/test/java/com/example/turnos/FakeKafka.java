@@ -1,18 +1,24 @@
 package com.example.turnos;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.testcontainers.kafka.KafkaContainer;
 
@@ -74,6 +80,33 @@ public final class FakeKafka {
 		} catch (ExecutionException | TimeoutException e) {
 			throw new IllegalStateException(e);
 		}
+	}
+
+	/**
+	 * Lo que hay publicado en el topic con esa key, leído desde el principio por un consumidor propio. Espera
+	 * hasta que aparezca al menos {@code expected} mensajes o se acabe el tiempo; devuelve los que encontró.
+	 */
+	public static List<ConsumerRecord<String, String>> recordsWithKey(String topic, String key, int expected,
+			Duration timeout) {
+		Properties config = new Properties();
+		config.put("bootstrap.servers", bootstrapServers());
+		config.put("group.id", "lector-de-prueba-" + UUID.randomUUID());
+		config.put("auto.offset.reset", "earliest");
+		config.put("key.deserializer", StringDeserializer.class.getName());
+		config.put("value.deserializer", StringDeserializer.class.getName());
+		List<ConsumerRecord<String, String>> found = new ArrayList<>();
+		long deadline = System.nanoTime() + timeout.toNanos();
+		try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(config)) {
+			consumer.subscribe(List.of(topic));
+			while (found.size() < expected && System.nanoTime() < deadline) {
+				for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(500))) {
+					if (key.equals(record.key())) {
+						found.add(record);
+					}
+				}
+			}
+		}
+		return found;
 	}
 
 }

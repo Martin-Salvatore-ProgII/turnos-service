@@ -6,13 +6,14 @@ import java.util.function.Supplier;
 import com.example.turnos.shared.infrastructure.config.CommandRetryProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.core.NestedRuntimeException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 
 /**
  * El reintento de las operaciones con efectos que son seguras de repetir, porque el otro lado reconoce
- * lo ya hecho: la confirmación inicial y, más adelante, la cancelación (ADR-0029). Es el gemelo de
+ * lo ya hecho: la confirmación inicial, la publicación del teléfono y, más adelante, la cancelación (ADR-0029). Es el gemelo de
  * {@link RemoteReadRetry}, con más intentos y una espera creciente entre ellos. Qué operación se
  * reintenta lo decide quien la usa: crear un hold, por ejemplo, nunca pasa por acá (ADR-0028).
  */
@@ -37,10 +38,10 @@ public class RemoteCommandRetry {
 		for (int attempt = 1; ; attempt++) {
 			try {
 				return command.get();
-			} catch (ResourceAccessException | HttpServerErrorException e) {
+			} catch (ResourceAccessException | HttpServerErrorException | TransientRemoteFailureException e) {
 				String reason = e instanceof HttpServerErrorException serverError
 						? "HTTP " + serverError.getStatusCode().value()
-						: e.getMostSpecificCause().getClass().getSimpleName();
+						: ((NestedRuntimeException) e).getMostSpecificCause().getClass().getSimpleName();
 				if (attempt > retries) {
 					throw new RemoteServiceUnavailableException(operation + " failed after " + attempt
 							+ " attempts (" + reason + ")");

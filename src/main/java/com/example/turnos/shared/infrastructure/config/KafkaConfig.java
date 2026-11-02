@@ -29,11 +29,6 @@ import org.springframework.kafka.listener.ContainerProperties;
 @Configuration
 public class KafkaConfig {
 
-	// Tiempo máximo del productor para entregar un mensaje, en milisegundos. Es el timeout de respuesta
-	// de la cátedra (RNF-09, 5 s) y vale para todas las esperas del envío, así el hilo nunca queda
-	// colgado más allá de lo que ya está decidido (ADR-0029).
-	static final int PRODUCER_TIMEOUT_MS = 5000;
-
 	@Bean
 	public ConsumerFactory<String, String> catedraConsumerFactory(CatedraIntegration integration) {
 		Map<String, Object> config = new HashMap<>();
@@ -62,7 +57,8 @@ public class KafkaConfig {
 	}
 
 	@Bean
-	public ProducerFactory<String, String> catedraProducerFactory(CatedraIntegration integration) {
+	public ProducerFactory<String, String> catedraProducerFactory(CatedraIntegration integration,
+			CatedraProperties catedraProperties) {
 		Map<String, Object> config = new HashMap<>();
 		config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, integration.kafkaBootstrapServers());
 		config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
@@ -73,9 +69,15 @@ public class KafkaConfig {
 		// La idempotencia del productor exige reintentos, así que se apaga: la de este servicio es el eventId.
 		config.put(ProducerConfig.RETRIES_CONFIG, 0);
 		config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, false);
-		config.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, PRODUCER_TIMEOUT_MS);
-		config.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, PRODUCER_TIMEOUT_MS);
-		config.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, PRODUCER_TIMEOUT_MS);
+		// Todas las esperas del envío valen lo mismo que el timeout de respuesta de la cátedra (RNF-09, 5 s,
+		// configurable): el hilo nunca queda colgado más allá de lo ya decidido (ADR-0029).
+		// linger.ms en 0: se publica un mensaje suelto por teléfono y no hay nada que agrupar. Además, Kafka
+		// exige delivery.timeout >= linger + request.timeout, y su valor por defecto (5 ms) lo rompería.
+		config.put(ProducerConfig.LINGER_MS_CONFIG, 0);
+		int timeoutMs = (int) catedraProperties.readTimeout().toMillis();
+		config.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, timeoutMs);
+		config.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, timeoutMs);
+		config.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, timeoutMs);
 		return new DefaultKafkaProducerFactory<>(config);
 	}
 

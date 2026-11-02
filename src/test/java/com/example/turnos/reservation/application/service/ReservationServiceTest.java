@@ -15,6 +15,7 @@ import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
 import com.example.turnos.reservation.domain.ports.in.StartReservationUseCase;
+import com.example.turnos.reservation.domain.ports.in.SubmitPhoneUseCase;
 import org.junit.jupiter.api.Test;
 
 // La fachada: delega en los puertos de entrada y traduce el vacío en RESERVATION_NOT_FOUND (ADR-0059).
@@ -25,8 +26,9 @@ class ReservationServiceTest {
 	private final StartReservationUseCase startReservationUseCase = mock(StartReservationUseCase.class);
 	private final GetReservationUseCase getReservationUseCase = mock(GetReservationUseCase.class);
 	private final HandleReservationEventUseCase handleReservationEventUseCase = mock(HandleReservationEventUseCase.class);
+	private final SubmitPhoneUseCase submitPhoneUseCase = mock(SubmitPhoneUseCase.class);
 	private final ReservationService service = new ReservationService(startReservationUseCase, getReservationUseCase,
-			handleReservationEventUseCase);
+			handleReservationEventUseCase, submitPhoneUseCase);
 
 	@Test
 	void startReservationDelegatesToItsUseCase() {
@@ -64,6 +66,14 @@ class ReservationServiceTest {
 
 		assertThat(service.handleReservationEvent(event))
 				.isEqualTo(com.example.turnos.reservation.domain.model.EventHandlingResult.DUPLICATE);
+	}
+
+	@Test
+	void submitPhoneDelegatesToItsUseCase() {
+		ReservationProcess process = ReservationProcess.builder().id(ID).build();
+		when(submitPhoneUseCase.submitPhone("juan", ID, "+5492615551234")).thenReturn(process);
+
+		assertThat(service.submitPhone("juan", ID, "+5492615551234")).isSameAs(process);
 	}
 
 }

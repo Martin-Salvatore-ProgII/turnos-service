@@ -94,8 +94,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	public ResponseEntity<Object> handleReservationException(ReservationException ex, WebRequest request) {
 		HttpStatus status = switch (ex.getCode()) {
 			case PROFESSIONAL_NOT_FOUND, RESERVATION_NOT_FOUND -> HttpStatus.NOT_FOUND;
-			case ACTIVE_RESERVATION_EXISTS -> HttpStatus.CONFLICT;
-			case DATE_OUT_OF_RANGE, PROFESSIONAL_DISABLED, INVALID_SLOT -> HttpStatus.BAD_REQUEST;
+			case ACTIVE_RESERVATION_EXISTS, PHONE_NOT_REQUESTED -> HttpStatus.CONFLICT;
+			case DATE_OUT_OF_RANGE, PROFESSIONAL_DISABLED, INVALID_SLOT, INVALID_PHONE_NUMBER -> HttpStatus.BAD_REQUEST;
+			case INTEGRATION_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
 		};
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, ex.getMessage());
 		problem.setProperty("code", ex.getCode().name());

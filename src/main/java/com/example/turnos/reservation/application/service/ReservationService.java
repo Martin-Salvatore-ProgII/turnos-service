@@ -11,6 +11,7 @@ import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
 import com.example.turnos.reservation.domain.ports.in.StartReservationUseCase;
+import com.example.turnos.reservation.domain.ports.in.SubmitPhoneUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +22,7 @@ public class ReservationService {
 	private final StartReservationUseCase startReservationUseCase;
 	private final GetReservationUseCase getReservationUseCase;
 	private final HandleReservationEventUseCase handleReservationEventUseCase;
+	private final SubmitPhoneUseCase submitPhoneUseCase;
 
 	// Sin Optional que traducir: el caso de uso informa cada rechazo con su código (ADR-0059).
 	public ReservationProcess startReservation(String login, Long professionalId, LocalDate date, LocalTime startTime) {
@@ -33,6 +35,11 @@ public class ReservationService {
 		return getReservationUseCase.getReservation(login, id)
 				.orElseThrow(() -> new ReservationException(ReservationException.Code.RESERVATION_NOT_FOUND,
 						"Could not find reservation with id: " + id));
+	}
+
+	// Como iniciar: el caso de uso informa cada rechazo con su código (ADR-0059).
+	public ReservationProcess submitPhone(String login, UUID id, String phoneNumber) {
+		return submitPhoneUseCase.submitPhone(login, id, phoneNumber);
 	}
 
 	// Lo llama el consumidor de Kafka. No hay Optional que traducir: el resultado dice qué pasó con el
