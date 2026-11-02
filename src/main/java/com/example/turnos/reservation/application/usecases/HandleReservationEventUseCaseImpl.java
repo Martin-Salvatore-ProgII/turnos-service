@@ -62,7 +62,7 @@ public class HandleReservationEventUseCaseImpl implements HandleReservationEvent
 
 	// Lo que cada evento le agrega al proceso, una vez que la transición valió. Si no valió, el proceso
 	// queda intacto: un evento tardío no pisa nada.
-	private static void copyDataOf(ReservationEvent event, ReservationProcess process) {
+	private void copyDataOf(ReservationEvent event, ReservationProcess process) {
 		switch (event.getType()) {
 			case INFORMATION_REQUESTED -> {
 				// El eventId del pedido es el requestEventId que hay que devolver con el teléfono (REF §15.4).
@@ -81,8 +81,17 @@ public class HandleReservationEventUseCaseImpl implements HandleReservationEvent
 					process.setExpiresAt(event.getExpiresAt());
 				}
 			}
-			default -> {
+			case APPOINTMENT_CONFIRMED -> {
+				process.setReservationId(event.getReservationId());
+				// La hora de la confirmación es la que informa la cátedra; si no la trae, la de este servicio.
+				process.setConfirmedAt(event.getOccurredAt() != null ? event.getOccurredAt() : clock.instant());
+				// Un rechazo anterior del teléfono quedó atrás: el proceso terminó bien.
+				process.setFailureReason(null);
 			}
+			case PROCESS_EXPIRED, PROCESS_INVALID ->
+				// El motivo es un código estable que la app traduce a su propio mensaje (contratos.md): por
+				// ejemplo HOLD_EXPIRED o REQUEST_EVENT_MISMATCH.
+				process.setFailureReason(event.getReason());
 		}
 	}
 

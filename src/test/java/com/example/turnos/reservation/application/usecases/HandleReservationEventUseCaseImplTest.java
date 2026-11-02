@@ -196,6 +196,82 @@ class HandleReservationEventUseCaseImplTest {
 	}
 
 	@Test
+	void aConfirmationKeepsTheReservationIdAndWhenItWasConfirmed() {
+		ReservationProcess process = process(ReservationStatus.PHONE_SUBMITTED);
+		Instant confirmedAt = Instant.parse("2026-09-10T14:36:01Z");
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+		when(processedEventRepository.registerIfNew("confirmacion-1", NOW)).thenReturn(true);
+		when(reservationProcessRepository.update(LOCAL_ID, process)).thenReturn(Optional.of(process));
+
+		useCase.handleReservationEvent(ReservationEvent.builder().eventId("confirmacion-1")
+				.type(ReservationEventType.APPOINTMENT_CONFIRMED).reservationProcessId(PROCESS_ID)
+				.reservationId(8251L).occurredAt(confirmedAt).build());
+
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
+		assertThat(process.getReservationId()).isEqualTo(8251L);
+		assertThat(process.getConfirmedAt()).isEqualTo(confirmedAt);
+	}
+
+	@Test
+	void aConfirmationWithoutTimeUsesTheCurrentTime() {
+		ReservationProcess process = process(ReservationStatus.AWAITING_PHONE);
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+		when(processedEventRepository.registerIfNew("confirmacion-1", NOW)).thenReturn(true);
+		when(reservationProcessRepository.update(LOCAL_ID, process)).thenReturn(Optional.of(process));
+
+		// Rige la regla 3 de maquina-estados.md: la cátedra manda aunque el envío del teléfono no se haya anotado.
+		useCase.handleReservationEvent(ReservationEvent.builder().eventId("confirmacion-1")
+				.type(ReservationEventType.APPOINTMENT_CONFIRMED).reservationProcessId(PROCESS_ID)
+				.reservationId(8251L).build());
+
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
+		assertThat(process.getConfirmedAt()).isEqualTo(NOW);
+	}
+
+	@Test
+	void anExpiredOrInvalidProcessKeepsTheReasonOfTheCatedra() {
+		ReservationProcess expired = process(ReservationStatus.AWAITING_PHONE);
+		ReservationProcess invalid = process(ReservationStatus.PHONE_SUBMITTED);
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID))
+				.thenReturn(Optional.of(expired), Optional.of(invalid));
+		when(processedEventRepository.registerIfNew(any(), any())).thenReturn(true);
+		when(reservationProcessRepository.update(any(), any()))
+				.thenAnswer(invocation -> Optional.of(invocation.getArgument(1)));
+
+		useCase.handleReservationEvent(ReservationEvent.builder().eventId("vencido-1")
+				.type(ReservationEventType.PROCESS_EXPIRED).reservationProcessId(PROCESS_ID).reason("HOLD_EXPIRED")
+				.build());
+		useCase.handleReservationEvent(ReservationEvent.builder().eventId("invalido-1")
+				.type(ReservationEventType.PROCESS_INVALID).reservationProcessId(PROCESS_ID)
+				.reason("REQUEST_EVENT_MISMATCH").build());
+
+		assertThat(expired.getStatus()).isEqualTo(ReservationStatus.EXPIRED);
+		assertThat(expired.getFailureReason()).isEqualTo("HOLD_EXPIRED");
+		assertThat(invalid.getStatus()).isEqualTo(ReservationStatus.INVALID);
+		assertThat(invalid.getFailureReason()).isEqualTo("REQUEST_EVENT_MISMATCH");
+	}
+
+	// ADR-0023: un estado final no se reabre. Cada evento tardío, de cualquier tipo, se ignora.
+	@ParameterizedTest
+	@EnumSource(value = ReservationStatus.class, names = { "CONFIRMED", "EXPIRED", "INVALID", "FAILED" })
+	void noLateEventReopensAFinalProcess(ReservationStatus finalStatus) {
+		for (ReservationEventType type : ReservationEventType.values()) {
+			ReservationProcess process = process(finalStatus);
+			process.setReservationId(8251L);
+			when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+			when(processedEventRepository.registerIfNew("tardio-" + type, NOW)).thenReturn(true);
+
+			assertThat(useCase.handleReservationEvent(ReservationEvent.builder().eventId("tardio-" + type)
+					.type(type).reservationProcessId(PROCESS_ID).reservationId(1L).reason("X").build()))
+					.isEqualTo(EventHandlingResult.NO_TRANSITION);
+
+			assertThat(process.getStatus()).isEqualTo(finalStatus);
+			assertThat(process.getReservationId()).isEqualTo(8251L);
+			assertThat(process.getFailureReason()).isNull();
+		}
+	}
+
+	@Test
 	void letsAConflictOnSaveRiseSoTheConsumerRetries() {
 		ReservationProcess process = process(ReservationStatus.AWAITING_REQUEST);
 		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
