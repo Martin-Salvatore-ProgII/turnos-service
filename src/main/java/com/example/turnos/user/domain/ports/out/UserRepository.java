@@ -11,6 +11,9 @@ public interface UserRepository {
 
 	Optional<User> findByLogin(String login);
 
+	// Por su id: lo usa la reconciliación, que parte del dueño de un proceso y no de un pedido con JWT.
+	Optional<User> findById(Long id);
+
 	List<User> findAllByAuthority(String authority);
 
 	Optional<User> update(Long id, User user);

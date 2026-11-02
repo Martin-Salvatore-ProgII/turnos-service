@@ -14,6 +14,8 @@ import com.example.turnos.reservation.application.exception.ReservationException
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
+import com.example.turnos.reservation.domain.ports.in.PurgeProcessedEventsUseCase;
+import com.example.turnos.reservation.domain.ports.in.ReconcileReservationProcessesUseCase;
 import com.example.turnos.reservation.domain.ports.in.StartReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.SubmitPhoneUseCase;
 import org.junit.jupiter.api.Test;
@@ -27,8 +29,10 @@ class ReservationServiceTest {
 	private final GetReservationUseCase getReservationUseCase = mock(GetReservationUseCase.class);
 	private final HandleReservationEventUseCase handleReservationEventUseCase = mock(HandleReservationEventUseCase.class);
 	private final SubmitPhoneUseCase submitPhoneUseCase = mock(SubmitPhoneUseCase.class);
+	private final ReconcileReservationProcessesUseCase reconcileUseCase = mock(ReconcileReservationProcessesUseCase.class);
+	private final PurgeProcessedEventsUseCase purgeUseCase = mock(PurgeProcessedEventsUseCase.class);
 	private final ReservationService service = new ReservationService(startReservationUseCase, getReservationUseCase,
-			handleReservationEventUseCase, submitPhoneUseCase);
+			handleReservationEventUseCase, submitPhoneUseCase, reconcileUseCase, purgeUseCase);
 
 	@Test
 	void startReservationDelegatesToItsUseCase() {
@@ -74,6 +78,15 @@ class ReservationServiceTest {
 		when(submitPhoneUseCase.submitPhone("juan", ID, "+5492615551234")).thenReturn(process);
 
 		assertThat(service.submitPhone("juan", ID, "+5492615551234")).isSameAs(process);
+	}
+
+	@Test
+	void reconciliationAndPurgeDelegateToTheirUseCases() {
+		when(reconcileUseCase.reconcileReservationProcesses(java.time.Duration.ofSeconds(30))).thenReturn(2);
+		when(purgeUseCase.purgeProcessedEvents(java.time.Duration.ofDays(7))).thenReturn(5);
+
+		assertThat(service.reconcileReservationProcesses(java.time.Duration.ofSeconds(30))).isEqualTo(2);
+		assertThat(service.purgeProcessedEvents(java.time.Duration.ofDays(7))).isEqualTo(5);
 	}
 
 }

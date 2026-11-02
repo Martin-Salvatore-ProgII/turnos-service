@@ -84,6 +84,17 @@ class JpaUserRepositoryAdapterTest {
 	}
 
 	@Test
+	void findByIdReadsTheUserBackFromTheDatabase() {
+		User created = adapter.create(newUser("juan", "juan@example.com"));
+		entityManager.flush();
+		entityManager.clear();
+
+		assertThat(adapter.findById(created.getId())).hasValueSatisfying(
+				found -> assertThat(found.getExternalPatientId()).isEqualTo(created.getExternalPatientId()));
+		assertThat(adapter.findById(-1L)).isEmpty();
+	}
+
+	@Test
 	void findByLoginReturnsEmptyForUnknownLogin() {
 		assertThat(adapter.findByLogin("nadie")).isEmpty();
 	}

@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.UUID;
 
 import com.example.turnos.TestcontainersConfiguration;
@@ -240,6 +242,59 @@ class JpaReservationProcessRepositoryAdapterTest {
 		assertThat(adapter.findById(process.getId())).hasValueSatisfying(found -> assertThat(found.getUserId())
 				.isEqualTo(process.getUserId()));
 		assertThat(adapter.findById(UUID.randomUUID())).isEmpty();
+	}
+
+	// Las consultas de la reconciliación (CU-05, ADR-0030).
+	@Test
+	void findsTheStartedProcessesCreatedBeforeTheCutoff() {
+		ReservationProcess started = adapter.create(startedProcess());
+		entityManager.flush();
+
+		assertThat(adapter.findStartedCreatedBefore(Instant.now().plusSeconds(60))).extracting(ReservationProcess::getId)
+				.contains(started.getId());
+		assertThat(adapter.findStartedCreatedBefore(Instant.now().minusSeconds(3600))).extracting(ReservationProcess::getId)
+				.doesNotContain(started.getId());
+	}
+
+	@Test
+	void findsOnlyTheProcessesInTheGivenStatusesWhoseExpirationPassed() {
+		Instant expiresAt = Instant.parse("2026-11-02T15:00:00Z");
+		ReservationProcess held = adapter.create(withStatus(ReservationStatus.HELD, expiresAt));
+		// Solo un proceso activo por usuario (ADR-0024): cada uno de otro dueño.
+		userId = insertUser("ana");
+		ReservationProcess submitted = adapter.create(withStatus(ReservationStatus.PHONE_SUBMITTED, expiresAt));
+		userId = insertUser("luis");
+		ReservationProcess notExpiredYet = adapter
+				.create(withStatus(ReservationStatus.AWAITING_PHONE, expiresAt.plusSeconds(600)));
+		entityManager.flush();
+
+		List<ReservationProcess> found = adapter.findByStatusInAndExpiresAtBefore(
+				EnumSet.of(ReservationStatus.HELD, ReservationStatus.AWAITING_PHONE), expiresAt.plusSeconds(1));
+
+		assertThat(found).extracting(ReservationProcess::getId).contains(held.getId())
+				.doesNotContain(submitted.getId(), notExpiredYet.getId());
+	}
+
+	@Test
+	void findsTheConfirmedReservationsFromTheDateOn() {
+		ReservationProcess future = withStatus(ReservationStatus.CONFIRMED, null);
+		future.setAppointmentDate(LocalDate.of(2026, 11, 20));
+		future = adapter.create(future);
+		userId = insertUser("ana");
+		ReservationProcess past = withStatus(ReservationStatus.CONFIRMED, null);
+		past.setAppointmentDate(LocalDate.of(2026, 10, 1));
+		past = adapter.create(past);
+		entityManager.flush();
+
+		assertThat(adapter.findConfirmedFrom(LocalDate.of(2026, 11, 2))).extracting(ReservationProcess::getId)
+				.contains(future.getId()).doesNotContain(past.getId());
+	}
+
+	private ReservationProcess withStatus(ReservationStatus status, Instant expiresAt) {
+		ReservationProcess process = startedProcess();
+		process.setStatus(status);
+		process.setExpiresAt(expiresAt);
+		return process;
 	}
 
 	private ReservationProcess read(UUID id) {
