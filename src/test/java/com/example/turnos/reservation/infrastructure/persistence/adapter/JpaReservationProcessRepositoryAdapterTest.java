@@ -224,6 +224,15 @@ class JpaReservationProcessRepositoryAdapterTest {
 		assertThatThrownBy(() -> adapter.create(process)).isInstanceOf(DataIntegrityViolationException.class);
 	}
 
+	@Test
+	void findsAProcessByTheReservationProcessIdOfTheCatedra() {
+		ReservationProcess process = adapter.create(fullProcess());
+
+		assertThat(adapter.findByReservationProcessId(process.getReservationProcessId()))
+				.hasValueSatisfying(found -> assertThat(found.getId()).isEqualTo(process.getId()));
+		assertThat(adapter.findByReservationProcessId("process-que-no-existe")).isEmpty();
+	}
+
 	private ReservationProcess read(UUID id) {
 		return mapper.toDomainModel(entityManager.find(ReservationProcessEntity.class, id));
 	}

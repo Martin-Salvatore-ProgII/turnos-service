@@ -1,6 +1,11 @@
 package com.example.turnos;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.MountableFile;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -67,6 +72,29 @@ public final class FakeCatedra {
 				.withCommand(HTTP_1_ONLY)
 				.withCopyFileToContainer(MountableFile.forClasspathResource(INTEGRATION_MAPPING),
 						FakeServer.MAPPINGS_DIR + "integration.json");
+	}
+
+	/**
+	 * Lo mismo, pero con la integración anunciando el Kafka y el consumer group dados: para las pruebas
+	 * que levantan la aplicación entera, donde el consumidor se conecta de verdad a esa dirección.
+	 */
+	public static GenericContainer<?> newContainerLikeTheCatedra(String kafkaBootstrapServers, String consumerGroupId) {
+		return FakeServer.newContainer()
+				.withCommand(HTTP_1_ONLY)
+				.withCopyToContainer(Transferable.of(integrationMapping(kafkaBootstrapServers, consumerGroupId)),
+						FakeServer.MAPPINGS_DIR + "integration.json");
+	}
+
+	/** La respuesta de la integración (resources/catedra/integration.json) con el Kafka y el grupo dados. */
+	public static String integrationMapping(String kafkaBootstrapServers, String consumerGroupId) {
+		try (InputStream resource = FakeCatedra.class.getClassLoader().getResourceAsStream(INTEGRATION_MAPPING)) {
+			ObjectNode mapping = (ObjectNode) JSON.readTree(resource);
+			ObjectNode integration = (ObjectNode) mapping.get("response").get("jsonBody");
+			integration.put("kafkaBootstrapServers", kafkaBootstrapServers).put("kafkaConsumerGroupId", consumerGroupId);
+			return mapping.toString();
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
 	}
 
 }

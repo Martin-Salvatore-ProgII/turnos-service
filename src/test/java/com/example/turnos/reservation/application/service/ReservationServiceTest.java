@@ -13,6 +13,7 @@ import java.util.UUID;
 import com.example.turnos.reservation.application.exception.ReservationException;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
+import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
 import com.example.turnos.reservation.domain.ports.in.StartReservationUseCase;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +24,9 @@ class ReservationServiceTest {
 
 	private final StartReservationUseCase startReservationUseCase = mock(StartReservationUseCase.class);
 	private final GetReservationUseCase getReservationUseCase = mock(GetReservationUseCase.class);
-	private final ReservationService service = new ReservationService(startReservationUseCase, getReservationUseCase);
+	private final HandleReservationEventUseCase handleReservationEventUseCase = mock(HandleReservationEventUseCase.class);
+	private final ReservationService service = new ReservationService(startReservationUseCase, getReservationUseCase,
+			handleReservationEventUseCase);
 
 	@Test
 	void startReservationDelegatesToItsUseCase() {
@@ -50,6 +53,17 @@ class ReservationServiceTest {
 		assertThatThrownBy(() -> service.getReservation("juan", ID))
 				.isInstanceOf(ReservationException.class)
 				.extracting("code").isEqualTo(ReservationException.Code.RESERVATION_NOT_FOUND);
+	}
+
+	@Test
+	void handleReservationEventDelegatesToItsUseCaseAndReturnsItsResult() {
+		com.example.turnos.reservation.domain.model.ReservationEvent event = com.example.turnos.reservation.domain.model.ReservationEvent
+				.builder().eventId("e-1").build();
+		when(handleReservationEventUseCase.handleReservationEvent(event))
+				.thenReturn(com.example.turnos.reservation.domain.model.EventHandlingResult.DUPLICATE);
+
+		assertThat(service.handleReservationEvent(event))
+				.isEqualTo(com.example.turnos.reservation.domain.model.EventHandlingResult.DUPLICATE);
 	}
 
 }
