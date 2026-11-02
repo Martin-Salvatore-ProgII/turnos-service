@@ -43,6 +43,16 @@ class DatabaseMigrationTest {
 		assertThat(tables).contains("reservation_process");
 	}
 
+	@Test
+	void createsProcessedEventTable() {
+		List<String> tables = jdbcClient
+				.sql("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+				.query(String.class)
+				.list();
+
+		assertThat(tables).contains("processed_event");
+	}
+
 	// Transaccional para que el usuario insertado se deshaga y no choque con otras pruebas.
 	@Test
 	@Transactional
