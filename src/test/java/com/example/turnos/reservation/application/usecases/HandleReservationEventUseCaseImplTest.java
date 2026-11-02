@@ -158,6 +158,43 @@ class HandleReservationEventUseCaseImplTest {
 		assertThat(process.getStatus()).isEqualTo(ReservationStatus.PHONE_SUBMITTED);
 	}
 
+	// REF §15.7: el rechazo no es un estado aparte, vuelve a esperar el teléfono hasta expiresAt.
+	@Test
+	void aRejectionGoesBackToWaitingForThePhoneWithTheReasonAndTheMessage() {
+		ReservationProcess process = process(ReservationStatus.PHONE_SUBMITTED);
+		process.setRequestEventId("pedido-1");
+		Instant expiresAt = Instant.parse("2026-11-02T15:10:00Z");
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+		when(processedEventRepository.registerIfNew("rechazo-1", NOW)).thenReturn(true);
+		when(reservationProcessRepository.update(LOCAL_ID, process)).thenReturn(Optional.of(process));
+
+		useCase.handleReservationEvent(ReservationEvent.builder().eventId("rechazo-1")
+				.type(ReservationEventType.INFORMATION_REJECTED).reservationProcessId(PROCESS_ID)
+				.reason("INVALID_PHONE_NUMBER").message("El telefono ingresado no es valido.").expiresAt(expiresAt)
+				.build());
+
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.AWAITING_PHONE);
+		assertThat(process.getFailureReason()).isEqualTo("INVALID_PHONE_NUMBER");
+		assertThat(process.getLastMessage()).isEqualTo("El telefono ingresado no es valido.");
+		assertThat(process.getExpiresAt()).isEqualTo(expiresAt);
+		// El nuevo envío responde al mismo pedido.
+		assertThat(process.getRequestEventId()).isEqualTo("pedido-1");
+	}
+
+	@Test
+	void aLateRejectionDoesNotReopenAConfirmedProcess() {
+		ReservationProcess process = process(ReservationStatus.CONFIRMED);
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+		when(processedEventRepository.registerIfNew("rechazo-1", NOW)).thenReturn(true);
+
+		assertThat(useCase.handleReservationEvent(ReservationEvent.builder().eventId("rechazo-1")
+				.type(ReservationEventType.INFORMATION_REJECTED).reservationProcessId(PROCESS_ID)
+				.reason("INVALID_PHONE_NUMBER").build())).isEqualTo(EventHandlingResult.NO_TRANSITION);
+
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
+		assertThat(process.getFailureReason()).isNull();
+	}
+
 	@Test
 	void letsAConflictOnSaveRiseSoTheConsumerRetries() {
 		ReservationProcess process = process(ReservationStatus.AWAITING_REQUEST);
