@@ -1,5 +1,9 @@
 package com.example.turnos.reservation.infrastructure.persistence.adapter;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -61,6 +65,26 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
 	public Optional<ReservationProcess> findByReservationProcessId(String reservationProcessId) {
 		return jpaReservationProcessRepository.findByReservationProcessId(reservationProcessId)
 				.map(reservationProcessMapper::toDomainModel);
+	}
+
+	@Override
+	public List<ReservationProcess> findStartedCreatedBefore(Instant cutoff) {
+		return jpaReservationProcessRepository.findByStatusAndCreatedAtBefore(ReservationStatus.STARTED, cutoff)
+				.stream().map(reservationProcessMapper::toDomainModel).toList();
+	}
+
+	@Override
+	public List<ReservationProcess> findByStatusInAndExpiresAtBefore(Collection<ReservationStatus> statuses,
+			Instant cutoff) {
+		return jpaReservationProcessRepository.findByStatusInAndExpiresAtBefore(statuses, cutoff).stream()
+				.map(reservationProcessMapper::toDomainModel).toList();
+	}
+
+	@Override
+	public List<ReservationProcess> findConfirmedFrom(LocalDate date) {
+		return jpaReservationProcessRepository
+				.findByStatusAndAppointmentDateGreaterThanEqual(ReservationStatus.CONFIRMED, date).stream()
+				.map(reservationProcessMapper::toDomainModel).toList();
 	}
 
 	@Override

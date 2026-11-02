@@ -46,6 +46,12 @@ turnos:
     # Reintentos al procesar un evento Kafka que falla, antes de saltearlo (ADR-0031, RNF-09). Se puede
     # cambiar con TURNOS_RESERVATION_EVENT_RETRIES.
     event-retries: 3
+    # Reconciliación de procesos colgados (ADR-0030, RNF-09): corre al arrancar y cada 60 segundos, y toma
+    # los procesos vencidos hace más de 30 segundos. Se pueden cambiar con TURNOS_RESERVATION_RECONCILIATION_INTERVAL
+    # y TURNOS_RESERVATION_RECONCILIATION_MARGIN. Con TURNOS_RESERVATION_RECONCILIATION_ENABLED=false no corre.
+    reconciliation-interval: 60s
+    reconciliation-margin: 30s
+    reconciliation-enabled: true
   security:
     jwt:
       # Ubicación de la clave privada RSA con la que se firma el JWT de usuario (ADR-0032).

@@ -1,5 +1,6 @@
 package com.example.turnos.reservation.application.service;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
@@ -10,6 +11,8 @@ import com.example.turnos.reservation.domain.model.ReservationEvent;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
+import com.example.turnos.reservation.domain.ports.in.PurgeProcessedEventsUseCase;
+import com.example.turnos.reservation.domain.ports.in.ReconcileReservationProcessesUseCase;
 import com.example.turnos.reservation.domain.ports.in.StartReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.SubmitPhoneUseCase;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +26,8 @@ public class ReservationService {
 	private final GetReservationUseCase getReservationUseCase;
 	private final HandleReservationEventUseCase handleReservationEventUseCase;
 	private final SubmitPhoneUseCase submitPhoneUseCase;
+	private final ReconcileReservationProcessesUseCase reconcileReservationProcessesUseCase;
+	private final PurgeProcessedEventsUseCase purgeProcessedEventsUseCase;
 
 	// Sin Optional que traducir: el caso de uso informa cada rechazo con su código (ADR-0059).
 	public ReservationProcess startReservation(String login, Long professionalId, LocalDate date, LocalTime startTime) {
@@ -40,6 +45,15 @@ public class ReservationService {
 	// Como iniciar: el caso de uso informa cada rechazo con su código (ADR-0059).
 	public ReservationProcess submitPhone(String login, UUID id, String phoneNumber) {
 		return submitPhoneUseCase.submitPhone(login, id, phoneNumber);
+	}
+
+	// Las dos las llama el scheduler de la reconciliación (ADR-0030).
+	public int reconcileReservationProcesses(Duration margin) {
+		return reconcileReservationProcessesUseCase.reconcileReservationProcesses(margin);
+	}
+
+	public int purgeProcessedEvents(Duration retention) {
+		return purgeProcessedEventsUseCase.purgeProcessedEvents(retention);
 	}
 
 	// Lo llama el consumidor de Kafka. No hay Optional que traducir: el resultado dice qué pasó con el
