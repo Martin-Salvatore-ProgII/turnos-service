@@ -43,6 +43,9 @@ turnos:
     # Cuánto se conservan los eventId de los eventos de reserva ya procesados (ADR-0008, RNF-09). Se puede
     # cambiar con TURNOS_RESERVATION_PROCESSED_EVENT_RETENTION.
     processed-event-retention: 7d
+    # Reintentos al procesar un evento Kafka que falla, antes de saltearlo (ADR-0031, RNF-09). Se puede
+    # cambiar con TURNOS_RESERVATION_EVENT_RETRIES.
+    event-retries: 3
   security:
     jwt:
       # Ubicación de la clave privada RSA con la que se firma el JWT de usuario (ADR-0032).

@@ -5,8 +5,11 @@ import java.time.LocalTime;
 import java.util.UUID;
 
 import com.example.turnos.reservation.application.exception.ReservationException;
+import com.example.turnos.reservation.domain.model.EventHandlingResult;
+import com.example.turnos.reservation.domain.model.ReservationEvent;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
+import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
 import com.example.turnos.reservation.domain.ports.in.StartReservationUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,6 +20,7 @@ public class ReservationService {
 
 	private final StartReservationUseCase startReservationUseCase;
 	private final GetReservationUseCase getReservationUseCase;
+	private final HandleReservationEventUseCase handleReservationEventUseCase;
 
 	// Sin Optional que traducir: el caso de uso informa cada rechazo con su código (ADR-0059).
 	public ReservationProcess startReservation(String login, Long professionalId, LocalDate date, LocalTime startTime) {
@@ -29,6 +33,12 @@ public class ReservationService {
 		return getReservationUseCase.getReservation(login, id)
 				.orElseThrow(() -> new ReservationException(ReservationException.Code.RESERVATION_NOT_FOUND,
 						"Could not find reservation with id: " + id));
+	}
+
+	// Lo llama el consumidor de Kafka. No hay Optional que traducir: el resultado dice qué pasó con el
+	// evento y ningún resultado es un error.
+	public EventHandlingResult handleReservationEvent(ReservationEvent event) {
+		return handleReservationEventUseCase.handleReservationEvent(event);
 	}
 
 }

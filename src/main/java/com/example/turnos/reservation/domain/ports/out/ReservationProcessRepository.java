@@ -16,6 +16,10 @@ public interface ReservationProcessRepository {
 	// (arq/seguridad.md).
 	Optional<ReservationProcess> findByIdAndUserId(UUID id, Long userId);
 
+	// El proceso al que pertenece un evento de la cátedra, por su reservationProcessId. Los eventos no
+	// traen al usuario, así que acá no se filtra por dueño.
+	Optional<ReservationProcess> findByReservationProcessId(String reservationProcessId);
+
 	// Si el usuario tiene algún proceso en un estado no final.
 	boolean existsActiveByUserId(Long userId);
 
