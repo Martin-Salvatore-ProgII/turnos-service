@@ -53,6 +53,18 @@ class RemoteCommandRetryTest {
 		assertThat(attempts).hasValue(3);
 	}
 
+	// El broker de Kafka que no confirma a tiempo se trata como un corte (ADR-0029, publicación del teléfono).
+	@Test
+	void retriesAFailureThatIsNotHttp() {
+		assertThatThrownBy(() -> retry.execute("Publish phone of process-1", counting(() -> {
+			throw new TransientRemoteFailureException("The broker did not confirm the message",
+					new java.util.concurrent.TimeoutException("no ack"));
+		})))
+				.isInstanceOf(RemoteServiceUnavailableException.class)
+				.hasMessage("Publish phone of process-1 failed after 3 attempts (TimeoutException)");
+		assertThat(attempts).hasValue(3);
+	}
+
 	@Test
 	void recoversWhenALaterAttemptAnswers() {
 		String result = retry.execute("Confirmation of hold-1", counting(() -> {

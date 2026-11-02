@@ -122,6 +122,38 @@ class ReservationControllerTest {
 	}
 
 	@Test
+	void submitsThePhoneOfTheUserOfTheTokenAndAnswers202WithTheReservation() throws Exception {
+		when(reservationService.submitPhone("juan", ID, "+5492615551234")).thenReturn(process());
+
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/phone")).contentType(MediaType.APPLICATION_JSON)
+						.content("{\"phoneNumber\":\"+5492615551234\"}"))
+				.andExpect(status().isAccepted())
+				.andExpect(jsonPath("$.id").value(ID.toString()));
+	}
+
+	@Test
+	void thePhoneIsRequired() throws Exception {
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/phone")).contentType(MediaType.APPLICATION_JSON)
+						.content("{\"phoneNumber\":\"  \"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+		verifyNoInteractions(reservationService);
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "INVALID_PHONE_NUMBER, 400", "RESERVATION_NOT_FOUND, 404", "PHONE_NOT_REQUESTED, 409",
+			"INTEGRATION_UNAVAILABLE, 503" })
+	void eachPhoneRejectionHasTheStatusOfTheContract(ReservationException.Code code, int status) throws Exception {
+		when(reservationService.submitPhone(eq("juan"), eq(ID), any()))
+				.thenThrow(new ReservationException(code, "rejected"));
+
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/phone")).contentType(MediaType.APPLICATION_JSON)
+						.content("{\"phoneNumber\":\"+5492615551234\"}"))
+				.andExpect(status().is(status))
+				.andExpect(jsonPath("$.code").value(code.name()));
+	}
+
+	@Test
 	void anUnavailableCatalogIsAServiceUnavailable() throws Exception {
 		when(reservationService.startReservation(eq("juan"), any(), any(), any()))
 				.thenThrow(new CatalogUnavailableException("Catalog service unavailable"));

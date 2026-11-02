@@ -2,6 +2,7 @@ package com.example.turnos.shared.infrastructure.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.util.Map;
 
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -20,7 +21,8 @@ class KafkaConfigTest {
 
 	private final KafkaConfig config = new KafkaConfig();
 	private final ConsumerFactory<String, String> consumerFactory = config.catedraConsumerFactory(INTEGRATION);
-	private final ProducerFactory<String, String> producerFactory = config.catedraProducerFactory(INTEGRATION);
+	private final ProducerFactory<String, String> producerFactory = config.catedraProducerFactory(INTEGRATION,
+			new CatedraProperties("http://catedra.prueba.internal", "token", Duration.ofSeconds(2), Duration.ofSeconds(7)));
 
 	@Test
 	void takesServersAndConsumerGroupFromTheIntegration() {
@@ -70,12 +72,14 @@ class KafkaConfigTest {
 	}
 
 	@Test
-	void producerWaitsAtMostTheCatedraResponseTimeout() {
+	void producerWaitsAtMostTheConfiguredCatedraResponseTimeout() {
 		Map<String, Object> properties = producerFactory.getConfigurationProperties();
 
-		assertThat(properties).containsEntry("max.block.ms", 5000);
-		assertThat(properties).containsEntry("request.timeout.ms", 5000);
-		assertThat(properties).containsEntry("delivery.timeout.ms", 5000);
+		assertThat(properties).containsEntry("max.block.ms", 7000);
+		assertThat(properties).containsEntry("request.timeout.ms", 7000);
+		assertThat(properties).containsEntry("delivery.timeout.ms", 7000);
+		// Kafka exige delivery.timeout >= linger + request.timeout: con linger en 0 se cumple.
+		assertThat(properties).containsEntry("linger.ms", 0);
 	}
 
 }
