@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import com.example.turnos.reservation.application.service.ReservationService;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.infrastructure.web.dto.PhoneRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.ReservationRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.ReservationResponse;
 import com.example.turnos.reservation.infrastructure.web.mapper.ReservationDtoMapper;
@@ -43,6 +44,16 @@ public class ReservationController {
 	public ResponseEntity<ReservationResponse> getReservation(@PathVariable UUID id, Authentication authentication) {
 		return ResponseEntity.ok(reservationDtoMapper.toResponse(
 				reservationService.getReservation(authentication.getName(), id)));
+	}
+
+	// 202 y no 200: el teléfono se publicó y la cátedra todavía tiene que resolverlo; el resultado llega
+	// por Kafka y la app lo ve consultando la reserva (ADR-0021). Responde la reserva en PHONE_SUBMITTED.
+	@PostMapping("/{id}/phone")
+	public ResponseEntity<ReservationResponse> submitPhone(@PathVariable UUID id,
+			@Valid @RequestBody PhoneRequest request, Authentication authentication) {
+		ReservationProcess process = reservationService.submitPhone(authentication.getName(), id,
+				request.getPhoneNumber());
+		return new ResponseEntity<>(reservationDtoMapper.toResponse(process), HttpStatus.ACCEPTED);
 	}
 
 }
