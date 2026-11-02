@@ -14,6 +14,8 @@ public interface JpaReservationProcessRepository extends JpaRepository<Reservati
 
 	Optional<ReservationProcessEntity> findByIdAndUserId(UUID id, Long userId);
 
+	Optional<ReservationProcessEntity> findByReservationProcessId(String reservationProcessId);
+
 	boolean existsByUserIdAndStatusIn(Long userId, Collection<ReservationStatus> statuses);
 
 }
