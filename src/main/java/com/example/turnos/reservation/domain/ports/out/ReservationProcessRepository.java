@@ -16,6 +16,10 @@ public interface ReservationProcessRepository {
 	// (arq/seguridad.md).
 	Optional<ReservationProcess> findByIdAndUserId(UUID id, Long userId);
 
+	// El proceso por su id local, sin filtrar por dueño: lo usa el servicio por su cuenta, no un pedido del
+	// usuario (por ejemplo, para releer un proceso que cambió en el medio, ADR-0068).
+	Optional<ReservationProcess> findById(UUID id);
+
 	// El proceso al que pertenece un evento de la cátedra, por su reservationProcessId. Los eventos no
 	// traen al usuario, así que acá no se filtra por dueño.
 	Optional<ReservationProcess> findByReservationProcessId(String reservationProcessId);
