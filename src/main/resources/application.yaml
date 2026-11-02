@@ -39,6 +39,10 @@ turnos:
     # Cuántos días hacia adelante acepta la disponibilidad de turnos (ADR-0015, ADR-0065, RNF-09). Tiene
     # que valer lo mismo que en el catálogo. Se puede cambiar con TURNOS_AVAILABILITY_HORIZON_DAYS.
     horizon-days: 60
+  reservation:
+    # Cuánto se conservan los eventId de los eventos de reserva ya procesados (ADR-0008, RNF-09). Se puede
+    # cambiar con TURNOS_RESERVATION_PROCESSED_EVENT_RETENTION.
+    processed-event-retention: 7d
   security:
     jwt:
       # Ubicación de la clave privada RSA con la que se firma el JWT de usuario (ADR-0032).
