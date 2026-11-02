@@ -70,6 +70,21 @@ class SubmitPhoneUseCaseImplTest {
 		assertThat(result.getSubmittedEventId()).isEqualTo(sent.getValue().getEventId());
 	}
 
+	// Tras un rechazo el usuario reenvía: el motivo del rechazo ya no vale y el eventId es nuevo (REF §15.7).
+	@Test
+	void resendingAfterARejectionClearsTheOldReasonAndUsesANewEventId() {
+		ReservationProcess process = awaitingPhone();
+		process.setSubmittedEventId("phone-submitted-anterior");
+		process.setFailureReason("INVALID_PHONE_NUMBER");
+		when(reservationProcessRepository.findByIdAndUserId(ID, 7L)).thenReturn(Optional.of(process));
+		when(publisherPort.publishPhone(any())).thenReturn(true);
+
+		ReservationProcess result = useCase.submitPhone("juan", ID, "2615551234");
+
+		assertThat(result.getFailureReason()).isNull();
+		assertThat(result.getSubmittedEventId()).isNotEqualTo("phone-submitted-anterior");
+	}
+
 	@Test
 	void everySubmissionOfTheUserHasANewEventId() {
 		when(reservationProcessRepository.findByIdAndUserId(ID, 7L)).thenAnswer(i -> Optional.of(awaitingPhone()));
