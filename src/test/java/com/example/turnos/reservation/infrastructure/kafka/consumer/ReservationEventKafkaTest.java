@@ -2,7 +2,6 @@ package com.example.turnos.reservation.infrastructure.kafka.consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -61,7 +60,10 @@ class ReservationEventKafkaTest {
 		RecordMetadata unknown = publish("p-2", event("event-" + UUID.randomUUID(), "AppointmentCancelled", "p-2"));
 
 		assertOffsetConfirmed(unknown);
-		verify(reservationService, never()).handleReservationEvent(any());
+		// Solo los eventos de este proceso: el consumidor lee desde el principio del topic y el mock es de toda
+		// la clase, así que ve también los eventos que publicaron las otras pruebas.
+		verify(reservationService, never()).handleReservationEvent(
+				org.mockito.ArgumentMatchers.argThat((ReservationEvent e) -> e != null && "p-2".equals(e.getReservationProcessId())));
 	}
 
 	// ADR-0031: ante una falla persistente se intenta la entrega original y 3 reintentos, y se sigue.
