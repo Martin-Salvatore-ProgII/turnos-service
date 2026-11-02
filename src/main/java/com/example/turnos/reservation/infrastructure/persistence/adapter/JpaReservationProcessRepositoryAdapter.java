@@ -53,6 +53,11 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
 	}
 
 	@Override
+	public Optional<ReservationProcess> findById(UUID id) {
+		return jpaReservationProcessRepository.findById(id).map(reservationProcessMapper::toDomainModel);
+	}
+
+	@Override
 	public Optional<ReservationProcess> findByReservationProcessId(String reservationProcessId) {
 		return jpaReservationProcessRepository.findByReservationProcessId(reservationProcessId)
 				.map(reservationProcessMapper::toDomainModel);

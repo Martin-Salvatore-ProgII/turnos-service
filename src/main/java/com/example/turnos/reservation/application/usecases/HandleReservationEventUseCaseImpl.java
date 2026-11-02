@@ -52,11 +52,29 @@ public class HandleReservationEventUseCaseImpl implements HandleReservationEvent
 					event.getType(), process.getStatus(), event.getReservationProcessId());
 			return EventHandlingResult.NO_TRANSITION;
 		}
+		copyDataOf(event, process);
 		reservationProcessRepository.update(process.getId(), process)
 				.orElseThrow(() -> new IllegalStateException("Reservation process " + process.getId() + " disappeared"));
 		log.info("Event {} of type {} applied to process {}, now {}", event.getEventId(), event.getType(),
 				event.getReservationProcessId(), process.getStatus());
 		return EventHandlingResult.APPLIED;
+	}
+
+	// Lo que cada evento le agrega al proceso, una vez que la transición valió. Si no valió, el proceso
+	// queda intacto: un evento tardío no pisa nada.
+	private static void copyDataOf(ReservationEvent event, ReservationProcess process) {
+		switch (event.getType()) {
+			case INFORMATION_REQUESTED -> {
+				// El eventId del pedido es el requestEventId que hay que devolver con el teléfono (REF §15.4).
+				process.setRequestEventId(event.getEventId());
+				process.setLastMessage(event.getMessage());
+				if (event.getExpiresAt() != null) {
+					process.setExpiresAt(event.getExpiresAt());
+				}
+			}
+			default -> {
+			}
+		}
 	}
 
 	private static ReservationTrigger triggerOf(ReservationEventType type) {

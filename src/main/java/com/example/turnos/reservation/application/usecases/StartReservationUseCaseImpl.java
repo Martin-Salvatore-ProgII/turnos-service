@@ -13,6 +13,7 @@ import com.example.turnos.availability.domain.model.Slot;
 import com.example.turnos.catalog.domain.model.ProfessionalAgenda;
 import com.example.turnos.catalog.domain.ports.out.CatalogClientPort;
 import com.example.turnos.reservation.application.exception.ReservationException;
+import com.example.turnos.reservation.application.exception.ReservationProcessConflictException;
 import com.example.turnos.reservation.domain.model.ConfirmationResult;
 import com.example.turnos.reservation.domain.model.HoldResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
@@ -126,27 +127,60 @@ public class StartReservationUseCaseImpl implements StartReservationUseCase {
 	private ReservationProcess confirmHold(ReservationProcess process, User user) {
 		ConfirmationResult result = holdPort.confirmHold(process.getHoldId(), user.getExternalPatientId(),
 				user.getFirstName(), user.getLastName());
+		if (result.getOutcome() == ConfirmationResult.Outcome.NO_RESPONSE) {
+			return process;
+		}
+		applyConfirmation(process, result);
+		try {
+			return save(process);
+		} catch (ReservationProcessConflictException e) {
+			return saveOverTheLatest(process, result);
+		}
+	}
+
+	// Cambia el proceso según la respuesta de la confirmación. Devuelve false si el disparador no vale
+	// desde el estado actual.
+	private boolean applyConfirmation(ReservationProcess process, ConfirmationResult result) {
 		switch (result.getOutcome()) {
 			case ACCEPTED -> {
-				process.apply(ReservationTrigger.CONFIRMATION_ACCEPTED);
+				if (!process.apply(ReservationTrigger.CONFIRMATION_ACCEPTED)) {
+					return false;
+				}
 				// Una confirmación repetida no trae el vencimiento: sigue valiendo el del hold.
 				if (result.getExpiresAt() != null) {
 					process.setExpiresAt(result.getExpiresAt());
 				}
 			}
 			case EXPIRED -> {
-				process.apply(ReservationTrigger.CONFIRMATION_EXPIRED);
+				if (!process.apply(ReservationTrigger.CONFIRMATION_EXPIRED)) {
+					return false;
+				}
 				process.setFailureReason(result.getFailureReason());
 			}
 			case REJECTED -> {
-				process.apply(ReservationTrigger.CONFIRMATION_REJECTED);
+				if (!process.apply(ReservationTrigger.CONFIRMATION_REJECTED)) {
+					return false;
+				}
 				process.setFailureReason(result.getFailureReason());
 			}
 			case NO_RESPONSE -> {
-				return process;
+				return false;
 			}
 		}
-		return save(process);
+		return true;
+	}
+
+	// El proceso cambió mientras se esperaba la respuesta: la cátedra publicó un evento antes de que
+	// llegara el 202 y el consumidor ya lo aplicó (CU-04, 8a). La respuesta no pisa ese avance: se relee
+	// el proceso y se le aplica la respuesta solo si todavía tiene transición. Un 202 sobre un proceso que
+	// ya espera el teléfono no la tiene, así que no hay retroceso (ADR-0023, ADR-0068).
+	private ReservationProcess saveOverTheLatest(ReservationProcess stale, ConfirmationResult result) {
+		ReservationProcess latest = reservationProcessRepository.findById(stale.getId())
+				.orElseThrow(() -> new IllegalStateException("Reservation process " + stale.getId() + " disappeared"));
+		if (applyConfirmation(latest, result)) {
+			return save(latest);
+		}
+		return latest;
 	}
 
 	private ReservationProcess save(ReservationProcess process) {
