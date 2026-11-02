@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -28,6 +29,7 @@ import com.example.turnos.catalog.domain.model.ProfessionalAgenda;
 import com.example.turnos.catalog.domain.model.WeeklySchedule;
 import com.example.turnos.catalog.domain.ports.out.CatalogClientPort;
 import com.example.turnos.reservation.application.exception.ReservationException;
+import com.example.turnos.reservation.application.exception.ReservationProcessConflictException;
 import com.example.turnos.reservation.domain.model.ConfirmationResult;
 import com.example.turnos.reservation.domain.model.Hold;
 import com.example.turnos.reservation.domain.model.HoldResult;
@@ -104,6 +106,31 @@ class StartReservationUseCaseImplTest {
 		// El vencimiento es el que informó la confirmación.
 		assertThat(process.getExpiresAt()).isEqualTo(processExpiresAt);
 		assertThat(process.getFailureReason()).isNull();
+	}
+
+	// CU-04, 8a: el pedido de teléfono llega antes de que se registre el 202. El consumidor ya movió el
+	// proceso a AWAITING_PHONE, así que guardar el 202 con la versión vieja falla: se relee y no se retrocede.
+	@Test
+	void aPhoneRequestThatArrivedBeforeThe202IsNotUndone() {
+		whenTheHoldIsCreated();
+		ReservationProcess alreadyAwaitingPhone = ReservationProcess.builder().id(UUID.randomUUID())
+				.status(ReservationStatus.AWAITING_PHONE).requestEventId("pedido-1").build();
+		doAnswer(invocation -> {
+			ReservationProcess process = invocation.getArgument(1);
+			if (process.getStatus() == ReservationStatus.AWAITING_REQUEST) {
+				throw new ReservationProcessConflictException(process.getId());
+			}
+			return Optional.of(saved(process));
+		}).when(reservationProcessRepository).update(any(), any());
+		when(reservationProcessRepository.findById(any())).thenReturn(Optional.of(alreadyAwaitingPhone));
+
+		ReservationProcess result = useCase.startReservation("juan", LAURA, NEXT_MONDAY, ELEVEN_TWENTY);
+
+		assertThat(result).isSameAs(alreadyAwaitingPhone);
+		assertThat(result.getStatus()).isEqualTo(ReservationStatus.AWAITING_PHONE);
+		assertThat(result.getRequestEventId()).isEqualTo("pedido-1");
+		// Se intentó guardar el 202 una vez; el proceso releído no tiene transición y no se vuelve a guardar.
+		assertThat(savedStatuses).containsExactly(ReservationStatus.STARTED, ReservationStatus.HELD);
 	}
 
 	@Test

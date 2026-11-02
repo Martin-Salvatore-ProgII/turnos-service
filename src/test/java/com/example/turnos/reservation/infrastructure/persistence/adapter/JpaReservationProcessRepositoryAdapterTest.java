@@ -233,6 +233,15 @@ class JpaReservationProcessRepositoryAdapterTest {
 		assertThat(adapter.findByReservationProcessId("process-que-no-existe")).isEmpty();
 	}
 
+	@Test
+	void findsAProcessByItsLocalIdWithoutFilteringByOwner() {
+		ReservationProcess process = adapter.create(startedProcess());
+
+		assertThat(adapter.findById(process.getId())).hasValueSatisfying(found -> assertThat(found.getUserId())
+				.isEqualTo(process.getUserId()));
+		assertThat(adapter.findById(UUID.randomUUID())).isEmpty();
+	}
+
 	private ReservationProcess read(UUID id) {
 		return mapper.toDomainModel(entityManager.find(ReservationProcessEntity.class, id));
 	}

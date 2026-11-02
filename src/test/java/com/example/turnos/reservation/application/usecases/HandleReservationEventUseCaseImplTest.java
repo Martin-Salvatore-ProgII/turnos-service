@@ -109,6 +109,55 @@ class HandleReservationEventUseCaseImplTest {
 		verify(reservationProcessRepository).update(LOCAL_ID, process);
 	}
 
+	// CU-04, paso 8: el eventId del pedido se guarda como requestEventId, con el mensaje y el vencimiento.
+	@Test
+	void aPhoneRequestKeepsItsEventIdAsRequestEventIdWithTheMessageAndTheExpiration() {
+		ReservationProcess process = process(ReservationStatus.AWAITING_REQUEST);
+		Instant expiresAt = Instant.parse("2026-11-02T15:10:00Z");
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+		when(processedEventRepository.registerIfNew("pedido-1", NOW)).thenReturn(true);
+		when(reservationProcessRepository.update(LOCAL_ID, process)).thenReturn(Optional.of(process));
+
+		useCase.handleReservationEvent(ReservationEvent.builder().eventId("pedido-1")
+				.type(ReservationEventType.INFORMATION_REQUESTED).reservationProcessId(PROCESS_ID)
+				.message("Ingrese un numero de telefono para continuar.").expiresAt(expiresAt).build());
+
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.AWAITING_PHONE);
+		assertThat(process.getRequestEventId()).isEqualTo("pedido-1");
+		assertThat(process.getLastMessage()).isEqualTo("Ingrese un numero de telefono para continuar.");
+		assertThat(process.getExpiresAt()).isEqualTo(expiresAt);
+	}
+
+	// CU-04, 8a: el pedido puede llegar antes de que turnos registre el 202 de la confirmación.
+	@Test
+	void aPhoneRequestAlsoMovesAProcessThatIsStillHeld() {
+		ReservationProcess process = process(ReservationStatus.HELD);
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+		when(processedEventRepository.registerIfNew("pedido-1", NOW)).thenReturn(true);
+		when(reservationProcessRepository.update(LOCAL_ID, process)).thenReturn(Optional.of(process));
+
+		useCase.handleReservationEvent(ReservationEvent.builder().eventId("pedido-1")
+				.type(ReservationEventType.INFORMATION_REQUESTED).reservationProcessId(PROCESS_ID).build());
+
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.AWAITING_PHONE);
+		assertThat(process.getRequestEventId()).isEqualTo("pedido-1");
+	}
+
+	@Test
+	void aLatePhoneRequestDoesNotOverwriteTheDataOfAProcessAlreadyPastThatPoint() {
+		ReservationProcess process = process(ReservationStatus.PHONE_SUBMITTED);
+		process.setRequestEventId("pedido-original");
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+		when(processedEventRepository.registerIfNew("pedido-tardio", NOW)).thenReturn(true);
+
+		assertThat(useCase.handleReservationEvent(ReservationEvent.builder().eventId("pedido-tardio")
+				.type(ReservationEventType.INFORMATION_REQUESTED).reservationProcessId(PROCESS_ID).build()))
+				.isEqualTo(EventHandlingResult.NO_TRANSITION);
+
+		assertThat(process.getRequestEventId()).isEqualTo("pedido-original");
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.PHONE_SUBMITTED);
+	}
+
 	@Test
 	void letsAConflictOnSaveRiseSoTheConsumerRetries() {
 		ReservationProcess process = process(ReservationStatus.AWAITING_REQUEST);
