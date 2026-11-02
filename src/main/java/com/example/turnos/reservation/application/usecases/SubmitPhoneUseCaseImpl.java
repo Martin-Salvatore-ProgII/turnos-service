@@ -71,6 +71,8 @@ public class SubmitPhoneUseCaseImpl implements SubmitPhoneUseCase {
 
 		process.apply(ReservationTrigger.INFORMATION_SUBMITTED);
 		process.setSubmittedEventId(eventId);
+		// El motivo de un rechazo anterior ya no vale: este envío todavía no tiene resultado.
+		process.setFailureReason(null);
 		try {
 			return save(process);
 		} catch (ReservationProcessConflictException e) {
@@ -85,6 +87,7 @@ public class SubmitPhoneUseCaseImpl implements SubmitPhoneUseCase {
 				.orElseThrow(() -> new IllegalStateException("Reservation process " + stale.getId() + " disappeared"));
 		if (latest.apply(ReservationTrigger.INFORMATION_SUBMITTED)) {
 			latest.setSubmittedEventId(eventId);
+			latest.setFailureReason(null);
 			return save(latest);
 		}
 		return latest;

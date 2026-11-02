@@ -72,6 +72,15 @@ public class HandleReservationEventUseCaseImpl implements HandleReservationEvent
 					process.setExpiresAt(event.getExpiresAt());
 				}
 			}
+			case INFORMATION_REJECTED -> {
+				// Vuelve a esperar el teléfono, con lo que la cátedra le dice al usuario y por qué (REF §15.7).
+				// El requestEventId no cambia: el nuevo envío responde al mismo pedido, con un eventId nuevo.
+				process.setLastMessage(event.getMessage());
+				process.setFailureReason(event.getReason());
+				if (event.getExpiresAt() != null) {
+					process.setExpiresAt(event.getExpiresAt());
+				}
+			}
 			default -> {
 			}
 		}
