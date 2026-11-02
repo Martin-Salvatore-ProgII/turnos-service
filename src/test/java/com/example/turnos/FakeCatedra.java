@@ -32,6 +32,26 @@ public final class FakeCatedra {
 		return "/api/appointment-holds/" + holdId + "/confirm";
 	}
 
+	/** La ruta de la lista de reservas de la cátedra (REF §11). */
+	public static final String APPOINTMENTS_PATH = "/api/appointments";
+
+	/**
+	 * Respuesta de una página de {@code GET /api/appointments} para un paciente, con el total en
+	 * {@code X-Total-Count} como la cátedra real.
+	 */
+	public static ObjectNode appointmentsMapping(String externalPatientId, int page, int status, String body, int total) {
+		ObjectNode mapping = JSON.createObjectNode();
+		ObjectNode request = mapping.putObject("request").put("method", "GET").put("urlPath", APPOINTMENTS_PATH);
+		ObjectNode query = request.putObject("queryParameters");
+		query.putObject("externalPatientId").put("equalTo", externalPatientId);
+		query.putObject("page").put("equalTo", String.valueOf(page));
+		ObjectNode response = mapping.putObject("response").put("status", status);
+		response.putObject("headers").put("Content-Type", status < 300 ? "application/json" : "application/problem+json")
+				.put("X-Total-Count", String.valueOf(total));
+		response.put("body", body);
+		return mapping;
+	}
+
 	/** Respuesta a un POST con el status y el cuerpo dados (tal cual, como texto). */
 	public static ObjectNode postMapping(String url, int status, String body) {
 		ObjectNode mapping = JSON.createObjectNode();

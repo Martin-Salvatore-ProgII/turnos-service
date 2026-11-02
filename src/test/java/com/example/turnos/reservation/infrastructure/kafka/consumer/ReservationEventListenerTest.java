@@ -31,7 +31,7 @@ class ReservationEventListenerTest {
 	private final ReservationEventMessageMapper messageMapper = mock(ReservationEventMessageMapper.class);
 	private final Acknowledgment acknowledgment = mock(Acknowledgment.class);
 	private final ReservationEventListener listener = new ReservationEventListener(reservationService, messageMapper,
-			new ReservationProperties(Duration.ofDays(7), 3));
+			new ReservationProperties(Duration.ofDays(7), 3, Duration.ofSeconds(60), Duration.ofSeconds(30)));
 
 	@Test
 	void handsTheEventToTheServiceAndThenConfirmsTheOffset() {

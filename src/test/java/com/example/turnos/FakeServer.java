@@ -55,6 +55,13 @@ public final class FakeServer {
 		return JSON.readTree(body).get("count").asInt();
 	}
 
+	/** Cuántos pedidos llegaron a esa ruta, sin mirar los parámetros de la consulta. */
+	public static int countRequestsToPath(GenericContainer<?> container, String method, String urlPath) {
+		String body = admin(container, "POST", "/__admin/requests/count",
+				"{\"method\":\"" + method + "\",\"urlPath\":\"" + urlPath + "\"}");
+		return JSON.readTree(body).get("count").asInt();
+	}
+
 	public static String readResource(String name) {
 		try (var in = FakeServer.class.getClassLoader().getResourceAsStream(name)) {
 			return new String(in.readAllBytes(), StandardCharsets.UTF_8);
