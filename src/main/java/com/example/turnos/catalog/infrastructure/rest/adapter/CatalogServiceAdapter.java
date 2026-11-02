@@ -6,9 +6,9 @@ import com.example.turnos.catalog.application.exception.CatalogTokenRejectedExce
 import com.example.turnos.catalog.application.exception.CatalogUnavailableException;
 import com.example.turnos.catalog.domain.model.ProfessionalAgenda;
 import com.example.turnos.catalog.domain.ports.out.CatalogClientPort;
-import com.example.turnos.catalog.infrastructure.rest.dto.ProblemDto;
 import com.example.turnos.catalog.infrastructure.rest.dto.ProfessionalAgendaResponse;
 import com.example.turnos.catalog.infrastructure.rest.mapper.ProfessionalAgendaMapper;
+import com.example.turnos.shared.infrastructure.rest.ProblemDto;
 import com.example.turnos.shared.infrastructure.rest.RemoteReadRetry;
 import com.example.turnos.shared.infrastructure.rest.RemoteServiceUnavailableException;
 import lombok.RequiredArgsConstructor;
@@ -46,7 +46,8 @@ public class CatalogServiceAdapter implements CatalogClientPort {
 	}
 
 	// Un 4xx no se reintenta: repetir el pedido da la misma respuesta. Se decide por el status y el
-	// code, nunca por el texto de detail (contratos.md).
+	// code, nunca por el texto de detail (contratos.md). Un 404 sin el código del contrato no prueba que
+	// el profesional no exista.
 	private Optional<ProfessionalAgendaResponse> readAgenda(Long professionalId) {
 		try {
 			ProfessionalAgendaResponse body = catalogRestClient.get()
@@ -58,7 +59,7 @@ public class CatalogServiceAdapter implements CatalogClientPort {
 			}
 			return Optional.of(body);
 		} catch (HttpClientErrorException e) {
-			if (e.getStatusCode().isSameCodeAs(HttpStatus.NOT_FOUND) && PROFESSIONAL_NOT_FOUND.equals(codeOf(e))) {
+			if (e.getStatusCode().isSameCodeAs(HttpStatus.NOT_FOUND) && PROFESSIONAL_NOT_FOUND.equals(ProblemDto.codeOf(e))) {
 				return Optional.empty();
 			}
 			if (e.getStatusCode().isSameCodeAs(HttpStatus.UNAUTHORIZED)) {
@@ -70,17 +71,6 @@ public class CatalogServiceAdapter implements CatalogClientPort {
 			throw e;
 		} catch (RestClientException e) {
 			throw new CatalogUnavailableException("Unexpected response from the catalog: unreadable body");
-		}
-	}
-
-	// Un 404 sin el código del contrato (por ejemplo, una ruta equivocada) no prueba que el
-	// profesional no exista.
-	private static String codeOf(HttpClientErrorException e) {
-		try {
-			ProblemDto problem = e.getResponseBodyAs(ProblemDto.class);
-			return problem == null ? null : problem.getCode();
-		} catch (RuntimeException unreadable) {
-			return null;
 		}
 	}
 

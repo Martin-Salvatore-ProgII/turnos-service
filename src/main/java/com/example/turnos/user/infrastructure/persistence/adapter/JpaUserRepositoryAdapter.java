@@ -31,6 +31,11 @@ public class JpaUserRepositoryAdapter implements UserRepository {
 	}
 
 	@Override
+	public Optional<User> findById(Long id) {
+		return jpaUserRepository.findById(id).map(userMapper::toDomainModel);
+	}
+
+	@Override
 	public List<User> findAllByAuthority(String authority) {
 		return jpaUserRepository.findAllByAuthoritiesContaining(authority).stream()
 				.map(userMapper::toDomainModel)
