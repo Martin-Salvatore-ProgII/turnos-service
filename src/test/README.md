@@ -30,9 +30,10 @@ Para correr una sola clase:
 | `ArchitectureTest` | Verifica la regla de dependencias de la arquitectura hexagonal (ADR-0053) | No |
 | `TestcontainersConfiguration` | Declara el contenedor de PostgreSQL que usan las pruebas. Se importa con `@Import` en cada prueba que necesite base | — |
 | `TestJwtKeysConfiguration` | Genera en memoria un par de claves RSA para firmar el JWT durante las pruebas. No hay ninguna clave en el repositorio | — |
-| `TestCatedraConfiguration` | Le da a la aplicación una cátedra falsa que responde la integración en estado `PROVISIONED`. Toda prueba con `@SpringBootTest` la importa, porque sin la integración el servicio no arranca | — |
+| `TestCatedraConfiguration` | Le da a la aplicación una cátedra falsa que responde la integración en estado `PROVISIONED`. Anuncia el Kafka de `FakeKafka` y un consumer group propio por contexto. Toda prueba con `@SpringBootTest` la importa, porque sin la integración el servicio no arranca | — |
 | `TestCatalogConfiguration` | Le da a la aplicación un catálogo falso, sin respuestas programadas. Toda prueba con `@SpringBootTest` la importa, porque sin la URL del catálogo el contexto no arranca | — |
 | `TestClockConfiguration` | Fija la hora de la aplicación completa en el lunes 2026-11-02 a las 12:30 de Argentina, para las pruebas que dependen de "hoy". El JWT se sigue validando con la hora del sistema | — |
+| `FakeKafka` | Un Kafka real (`apache/kafka`) compartido por toda la ejecución. Publica mensajes, lee lo publicado por key y consulta el offset confirmado de un grupo | — |
 | `FakeServer` | Arma un contenedor de WireMock y le programa respuestas por su API de administración (incluidas demoras, cortes de conexión y escenarios). Lo usan la cátedra y el catálogo simulados | — |
 | `FakeCatedra` | Lo propio de la cátedra simulada: el JWT técnico de prueba, la respuesta de la integración (`resources/catedra/integration.json`) y las de ocupaciones (el ejemplo de la REF §8 en `resources/catedra/occupancies-ref.json`) | — |
 | `FakeCatalog` | Lo propio del catálogo simulado: la ruta de la agenda y respuestas reales del catálogo, en `resources/catalog/` (la agenda de la 204, la de la 206 deshabilitada y el 404 `PROFESSIONAL_NOT_FOUND`) | — |
@@ -81,6 +82,41 @@ Las pruebas siguen la estructura de paquetes del código: cada clase se prueba e
 | La agenda real de un profesional, uno deshabilitado, horas `HH:mm`, campos desconocidos, el JWT del usuario reenviado, profesional inexistente, 404 sin código, token rechazado, catálogo no listo, lento, caído o con respuesta ilegible, sin la dirección en los mensajes | `catalog/infrastructure/rest/adapter/CatalogServiceAdapterTest` | Sí |
 | `503 CATALOG_UNAVAILABLE` y el 401 cuando el catálogo rechaza el token | `shared/infrastructure/web/advice/GlobalExceptionHandlerTest` | No |
 | Una feature solo usa el `domain` de otra (ADR-0062) | `ArchitectureTest` | No |
+
+## Pruebas de la reserva por Kafka
+
+Ninguna habla con la cátedra real: los eventos se publican en un Kafka de Testcontainers con el formato de la REF §15. La cátedra real no publicaba ningún evento al escribir estas pruebas.
+
+| Qué se quiere comprobar | Dónde | Necesita Docker |
+| --- | --- | --- |
+| La configuración del consumidor y del productor: servidores y grupo de la integración, ack manual, `earliest`, `acks=all`, sin reintentos propios, timeouts | `shared/infrastructure/config/KafkaConfigTest` | No |
+| Registro de eventos por `eventId`: uno nuevo, un duplicado, diez simultáneos (gana uno), purga por antigüedad | `reservation/infrastructure/persistence/adapter/JpaProcessedEventRepositoryAdapterTest`, `reservation/application/usecases/PurgeProcessedEventsUseCaseImplTest` | Sí / No |
+| Cada evento sobre el proceso: desconocido, duplicado, sin transición, cada tipo, el pedido de teléfono (también sobre `HELD`), el rechazo, la confirmación, el vencimiento, la invalidez, la cancelación (y que después de la del dueño no cambia nada), ningún evento tardío reabre un final | `reservation/application/usecases/HandleReservationEventUseCaseImplTest` | No |
+| Interpretación de los mensajes de la REF §15: cada tipo (también `AppointmentCancelled` sin motivo), campos desconocidos, tipo desconocido, JSON roto, datos faltantes, fecha inválida | `reservation/infrastructure/kafka/mapper/ReservationEventMessageMapperTest` | No |
+| El adaptador de entrada: entrega a la fachada, reintentos (la entrega y 3 más), offset confirmado siempre al final | `reservation/infrastructure/kafka/consumer/ReservationEventListenerTest` | No |
+| El consumidor real con un Kafka real: entrega, mensajes inválidos o desconocidos, falla persistente, offset confirmado | `reservation/infrastructure/kafka/consumer/ReservationEventKafkaTest` | Sí |
+| La regla del teléfono de la cátedra (ADR-0027) | `reservation/domain/model/PhoneNumberTest` | No |
+| Enviar el teléfono: normalizado, con el `requestEventId` guardado, `eventId` nuevo en cada envío, reserva ajena, estado que no lo espera, formato inválido, broker que no confirma, evento que llega mientras se publica | `reservation/application/usecases/SubmitPhoneUseCaseImplTest` | No |
+| El productor real: mensaje de la REF §15.5 con la key del proceso, mismos bytes en cada reintento, 2 reintentos y nada más, broker inalcanzable | `reservation/infrastructure/kafka/producer/KafkaAdditionalInformationAdapterTest` | Sí |
+| `POST /api/reservations/{id}/phone`: 202, teléfono obligatorio y un código HTTP por cada rechazo | `reservation/infrastructure/web/controller/ReservationControllerTest` | No |
+| El 202 de la confirmación que llega después del pedido de teléfono no retrocede el proceso | `reservation/application/usecases/StartReservationUseCaseImplTest` | No |
+| Reconciliación, caso por caso (CU-05): `STARTED`, vencidos sin teléfono, enviados confirmados o fallidos, confirmados cancelados, cátedra caída, conflicto con un evento | `reservation/application/usecases/ReconcileReservationProcessesUseCaseImplTest` | No |
+| El cliente de `GET /api/appointments`: filtro por paciente, paginación con `X-Total-Count`, estado desconocido, cátedra caída o que rechaza el token | `reservation/infrastructure/rest/adapter/CatedraAppointmentAdapterTest` | Sí |
+| El disparador de la reconciliación: valores configurados, un ciclo que falla no lo detiene, corre al arrancar | `reservation/infrastructure/scheduler/ReservationReconciliationSchedulerTest`, `ReservationReconciliationStartupTest` | No / Sí |
+| El recorrido completo con todo real salvo la cátedra: reserva confirmada con teléfono, vencida sin teléfono, rechazo y reenvío, evento duplicado y tardío, proceso inexistente, otro usuario, teléfono inválido, reconciliación, cancelación informada por la cátedra (una sola vez aunque se repita) y el evento después de la cancelación del dueño | `reservation/ReservationEventFlowTest` | Sí |
+
+## Pruebas de mis reservas
+
+| Qué se quiere comprobar | Dónde | Necesita Docker |
+| --- | --- | --- |
+| Las cabeceras de una página (`X-Total-Count` y `Link`) y el tamaño máximo configurable | `shared/infrastructure/web/pagination/PaginationHeadersTest`, `MaxPageSizeValidatorTest` | No |
+| Listar: solo las del dueño, de la más reciente a la más antigua, la página y el total, el filtro por estado, un usuario sin reservas | `reservation/infrastructure/persistence/adapter/JpaReservationProcessRepositoryAdapterTest`, `reservation/application/usecases/ListReservationsUseCaseImplTest` | Sí / No |
+| `GET /api/reservations`: forma de la lista y cabeceras, valores por defecto, parámetros inválidos | `reservation/infrastructure/web/controller/ReservationControllerTest` | No |
+| El cliente de la cancelación (REF §12): el cuerpo con y sin motivo, el JWT técnico, `RESERVATION_NOT_CANCELLABLE` sin reintento, otro 4xx como cátedra no disponible, 3 intentos sin respuesta, respuesta perdida que se recupera, sin el `reservationProcessId` ni la URL en el mensaje | `reservation/infrastructure/rest/adapter/CatedraAppointmentAdapterTest` | Sí |
+| Cancelar: con lo que responde la cátedra, ya cancelada sin llamarla, ajena, no confirmada, turno empezado o no (ADR-0071), cátedra que rechaza o no responde, un evento que llega mientras tanto | `reservation/application/usecases/CancelReservationUseCaseImplTest` | No |
+| `POST /api/reservations/{id}/cancel`: con y sin cuerpo, motivo de más de 500 caracteres, un código HTTP por cada rechazo | `reservation/infrastructure/web/controller/ReservationControllerTest` | No |
+| El recorrido completo: cancelar y volver a cancelar, una reserva no confirmada, la cátedra sin respuesta | `reservation/ReservationFlowTest` | Sí |
+| Dos usuarios: cada uno lista solo las suyas (sin pedir nada al catálogo ni a la cátedra), y ver o cancelar la ajena da el mismo 404 que una inexistente | `reservation/ReservationIsolationTest` | Sí |
 
 ## Levantar la aplicación con una base descartable
 
