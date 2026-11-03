@@ -39,6 +39,11 @@ turnos:
     # Cuántos días hacia adelante acepta la disponibilidad de turnos (ADR-0015, ADR-0065, RNF-09). Tiene
     # que valer lo mismo que en el catálogo. Se puede cambiar con TURNOS_AVAILABILITY_HORIZON_DAYS.
     horizon-days: 60
+  pagination:
+    # Tamaño de página por defecto y máximo de las listas (docs/arq/contratos.md, RNF-09). Se pueden
+    # cambiar con TURNOS_PAGINATION_DEFAULT_SIZE y TURNOS_PAGINATION_MAX_SIZE.
+    default-size: 20
+    max-size: 100
   reservation:
     # Cuánto se conservan los eventId de los eventos de reserva ya procesados (ADR-0008, RNF-09). Se puede
     # cambiar con TURNOS_RESERVATION_PROCESSED_EVENT_RETENTION.
