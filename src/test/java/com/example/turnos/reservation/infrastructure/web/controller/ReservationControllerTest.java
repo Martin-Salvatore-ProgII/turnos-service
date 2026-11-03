@@ -250,6 +250,58 @@ class ReservationControllerTest {
 		verifyNoInteractions(reservationService);
 	}
 
+	@Test
+	void cancelsTheReservationOfTheUserOfTheTokenWithTheReason() throws Exception {
+		ReservationProcess cancelled = process();
+		cancelled.setStatus(ReservationStatus.CANCELLED);
+		cancelled.setCancelledAt(Instant.parse("2026-11-02T16:00:00Z"));
+		cancelled.setCancellationReason("No puedo ir");
+		cancelled.setCancelledBy("juan");
+		when(reservationService.cancelReservation("juan", ID, "No puedo ir")).thenReturn(cancelled);
+
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/cancel")).contentType(MediaType.APPLICATION_JSON)
+						.content("{\"reason\":\"No puedo ir\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(ID.toString()))
+				.andExpect(jsonPath("$.status").value("CANCELLED"))
+				.andExpect(jsonPath("$.cancelledAt").value("2026-11-02T16:00:00Z"))
+				.andExpect(jsonPath("$.cancellationReason").value("No puedo ir"))
+				// Quién canceló es un dato de la administración, no de la representación del dueño.
+				.andExpect(content().string(not(containsString("cancelledBy"))));
+	}
+
+	@Test
+	void theBodyOfTheCancellationIsOptional() throws Exception {
+		ReservationProcess cancelled = process();
+		cancelled.setStatus(ReservationStatus.CANCELLED);
+		when(reservationService.cancelReservation("juan", ID, null)).thenReturn(cancelled);
+
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/cancel")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("CANCELLED"));
+	}
+
+	@Test
+	void aReasonOfMoreThan500CharactersIsAValidationError() throws Exception {
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/cancel")).contentType(MediaType.APPLICATION_JSON)
+						.content("{\"reason\":\"" + "x".repeat(501) + "\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value("reason"));
+		verifyNoInteractions(reservationService);
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "RESERVATION_NOT_FOUND, 404", "RESERVATION_NOT_CANCELLABLE, 409", "INTEGRATION_UNAVAILABLE, 503" })
+	void eachCancellationRejectionHasTheStatusOfTheContract(ReservationException.Code code, int status)
+			throws Exception {
+		when(reservationService.cancelReservation("juan", ID, null)).thenThrow(new ReservationException(code, "no"));
+
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/cancel")))
+				.andExpect(status().is(status))
+				.andExpect(jsonPath("$.code").value(code.name()));
+	}
+
 	// El usuario que dejaría la seguridad después de validar el JWT: su login es el nombre.
 	private static MockHttpServletRequestBuilder asJuan(MockHttpServletRequestBuilder request) {
 		return request.principal(new TestingAuthenticationToken("juan", null, "ROLE_USER"));

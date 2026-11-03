@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
 
+import com.example.turnos.availability.domain.model.AgendaZone;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -59,6 +60,12 @@ public class ReservationProcess {
 		}
 		status = trigger.getTarget();
 		return true;
+	}
+
+	// Si el turno ya empezó en ese instante, con la hora del negocio (ADR-0016). Es el mismo criterio que
+	// descarta un slot de hoy al reservar; al cancelar, un turno que ya empezó no se cancela (ADR-0071).
+	public boolean appointmentHasStarted(Instant now) {
+		return !appointmentDate.atTime(startTime).atZone(AgendaZone.ZONE).toInstant().isAfter(now);
 	}
 
 }

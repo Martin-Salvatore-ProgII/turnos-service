@@ -16,6 +16,7 @@ import com.example.turnos.reservation.domain.model.PageQuery;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
+import com.example.turnos.reservation.domain.ports.in.CancelReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
 import com.example.turnos.reservation.domain.ports.in.ListReservationsUseCase;
@@ -35,10 +36,12 @@ class ReservationServiceTest {
 	private final ListReservationsUseCase listReservationsUseCase = mock(ListReservationsUseCase.class);
 	private final HandleReservationEventUseCase handleReservationEventUseCase = mock(HandleReservationEventUseCase.class);
 	private final SubmitPhoneUseCase submitPhoneUseCase = mock(SubmitPhoneUseCase.class);
+	private final CancelReservationUseCase cancelReservationUseCase = mock(CancelReservationUseCase.class);
 	private final ReconcileReservationProcessesUseCase reconcileUseCase = mock(ReconcileReservationProcessesUseCase.class);
 	private final PurgeProcessedEventsUseCase purgeUseCase = mock(PurgeProcessedEventsUseCase.class);
 	private final ReservationService service = new ReservationService(startReservationUseCase, getReservationUseCase,
-			listReservationsUseCase, handleReservationEventUseCase, submitPhoneUseCase, reconcileUseCase, purgeUseCase);
+			listReservationsUseCase, handleReservationEventUseCase, submitPhoneUseCase, cancelReservationUseCase, reconcileUseCase,
+			purgeUseCase);
 
 	@Test
 	void startReservationDelegatesToItsUseCase() {
@@ -93,6 +96,14 @@ class ReservationServiceTest {
 		when(submitPhoneUseCase.submitPhone("juan", ID, "+5492615551234")).thenReturn(process);
 
 		assertThat(service.submitPhone("juan", ID, "+5492615551234")).isSameAs(process);
+	}
+
+	@Test
+	void cancelReservationDelegatesToItsUseCase() {
+		ReservationProcess process = ReservationProcess.builder().id(ID).build();
+		when(cancelReservationUseCase.cancelReservation("juan", ID, "No puedo ir")).thenReturn(process);
+
+		assertThat(service.cancelReservation("juan", ID, "No puedo ir")).isSameAs(process);
 	}
 
 	@Test
