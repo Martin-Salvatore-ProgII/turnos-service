@@ -13,7 +13,7 @@ import org.springframework.web.client.ResourceAccessException;
 
 /**
  * El reintento de las operaciones con efectos que son seguras de repetir, porque el otro lado reconoce
- * lo ya hecho: la confirmación inicial, la publicación del teléfono y, más adelante, la cancelación (ADR-0029). Es el gemelo de
+ * lo ya hecho: la confirmación inicial, la publicación del teléfono y la cancelación (ADR-0029). Es el gemelo de
  * {@link RemoteReadRetry}, con más intentos y una espera creciente entre ellos. Qué operación se
  * reintenta lo decide quien la usa: crear un hold, por ejemplo, nunca pasa por acá (ADR-0028).
  */

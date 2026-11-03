@@ -87,14 +87,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		return handleExceptionInternal(ex, problem, new HttpHeaders(), status, request);
 	}
 
-	// Los rechazos al iniciar o ver una reserva (contratos.md): inexistente o ajena es 404, igual en los
-	// dos casos para no revelar que existe; una reserva en curso es un conflicto (409); el resto son
-	// errores del pedido (400).
+	// Los rechazos de las operaciones sobre reservas (contratos.md): inexistente o ajena es 404, igual en
+	// los dos casos para no revelar que existe; una reserva en curso, un teléfono no pedido o una reserva
+	// que no se puede cancelar son conflictos con su estado (409); el resto son errores del pedido (400).
 	@ExceptionHandler(ReservationException.class)
 	public ResponseEntity<Object> handleReservationException(ReservationException ex, WebRequest request) {
 		HttpStatus status = switch (ex.getCode()) {
 			case PROFESSIONAL_NOT_FOUND, RESERVATION_NOT_FOUND -> HttpStatus.NOT_FOUND;
-			case ACTIVE_RESERVATION_EXISTS, PHONE_NOT_REQUESTED -> HttpStatus.CONFLICT;
+			case ACTIVE_RESERVATION_EXISTS, PHONE_NOT_REQUESTED, RESERVATION_NOT_CANCELLABLE -> HttpStatus.CONFLICT;
 			case DATE_OUT_OF_RANGE, PROFESSIONAL_DISABLED, INVALID_SLOT, INVALID_PHONE_NUMBER -> HttpStatus.BAD_REQUEST;
 			case INTEGRATION_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
 		};

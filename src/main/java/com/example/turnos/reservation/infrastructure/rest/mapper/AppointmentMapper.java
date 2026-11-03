@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import com.example.turnos.reservation.domain.model.CatedraAppointment;
 import com.example.turnos.reservation.domain.model.CatedraAppointmentStatus;
 import com.example.turnos.reservation.infrastructure.rest.dto.AppointmentDto;
+import com.example.turnos.reservation.infrastructure.rest.dto.CancellationRequest;
 
 @Component
 public class AppointmentMapper {
@@ -20,6 +21,16 @@ public class AppointmentMapper {
 				.confirmedAt(dto.getConfirmedAt())
 				.cancelledAt(dto.getCancelledAt())
 				.cancellationReason(dto.getCancellationReason())
+				.build();
+	}
+
+	// Sin motivo no hay cuerpo: la cátedra lo acepta así (REF §12, probado con probar-reserva-catedra.sh).
+	public CancellationRequest toCancellationRequest(String reason) {
+		if (reason == null) {
+			return null;
+		}
+		return CancellationRequest.builder()
+				.reason(reason)
 				.build();
 	}
 
