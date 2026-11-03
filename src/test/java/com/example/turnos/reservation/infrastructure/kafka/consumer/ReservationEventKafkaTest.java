@@ -57,7 +57,7 @@ class ReservationEventKafkaTest {
 	@Test
 	void confirmsTheOffsetOfMalformedAndUnknownEventsWithoutCallingTheService() {
 		publish("p-2", "esto no es JSON");
-		RecordMetadata unknown = publish("p-2", event("event-" + UUID.randomUUID(), "AppointmentCancelled", "p-2"));
+		RecordMetadata unknown = publish("p-2", event("event-" + UUID.randomUUID(), "AlgoNuevo", "p-2"));
 
 		assertOffsetConfirmed(unknown);
 		// Solo los eventos de este proceso: el consumidor lee desde el principio del topic y el mock es de toda

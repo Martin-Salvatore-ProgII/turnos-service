@@ -22,6 +22,11 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReservationProcess {
+
+	// cancelledBy de una cancelación que no pidió nadie de este servicio: la informó la cátedra, por
+	// AppointmentCancelled o en la reconciliación (arq/modelo-db.md).
+	public static final String CANCELLED_BY_CATEDRA = "CATEDRA";
+
 	private UUID id;
 	// Dueño del proceso. Toda consulta o cambio se filtra por él (arq/seguridad.md).
 	private Long userId;

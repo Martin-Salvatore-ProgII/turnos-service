@@ -92,6 +92,14 @@ public class HandleReservationEventUseCaseImpl implements HandleReservationEvent
 				// El motivo es un código estable que la app traduce a su propio mensaje (contratos.md): por
 				// ejemplo HOLD_EXPIRED o REQUEST_EVENT_MISMATCH.
 				process.setFailureReason(event.getReason());
+			case APPOINTMENT_CANCELLED -> {
+				// Solo llega acá si el proceso seguía CONFIRMED: una cancelación nuestra ya lo dejó CANCELLED
+				// con el 200 y el evento posterior no tiene transición (ADR-0026). Si llega, es porque el
+				// 200 se perdió o porque la canceló otro camino; quién la pidió no viaja en el evento.
+				process.setCancelledAt(event.getOccurredAt() != null ? event.getOccurredAt() : clock.instant());
+				process.setCancellationReason(event.getReason());
+				process.setCancelledBy(ReservationProcess.CANCELLED_BY_CATEDRA);
+			}
 		}
 	}
 
@@ -102,6 +110,7 @@ public class HandleReservationEventUseCaseImpl implements HandleReservationEvent
 			case APPOINTMENT_CONFIRMED -> ReservationTrigger.APPOINTMENT_CONFIRMED;
 			case PROCESS_EXPIRED -> ReservationTrigger.PROCESS_EXPIRED;
 			case PROCESS_INVALID -> ReservationTrigger.PROCESS_INVALID;
+			case APPOINTMENT_CANCELLED -> ReservationTrigger.APPOINTMENT_CANCELLED;
 		};
 	}
 
