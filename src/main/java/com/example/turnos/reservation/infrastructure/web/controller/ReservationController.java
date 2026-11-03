@@ -6,6 +6,7 @@ import java.util.UUID;
 import com.example.turnos.reservation.application.service.ReservationService;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.infrastructure.web.dto.CancelReservationRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.PhoneRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.ReservationListRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.ReservationRequest;
@@ -70,6 +71,16 @@ public class ReservationController {
 		ReservationProcess process = reservationService.submitPhone(authentication.getName(), id,
 				request.getPhoneNumber());
 		return new ResponseEntity<>(reservationDtoMapper.toResponse(process), HttpStatus.ACCEPTED);
+	}
+
+	// 200 con la reserva en CANCELLED, también si ya lo estaba (contratos.md). El cuerpo es opcional: sin
+	// él, se cancela sin motivo.
+	@PostMapping("/{id}/cancel")
+	public ResponseEntity<ReservationResponse> cancelReservation(@PathVariable UUID id,
+			@Valid @RequestBody(required = false) CancelReservationRequest request, Authentication authentication) {
+		ReservationProcess process = reservationService.cancelReservation(authentication.getName(), id,
+				request == null ? null : request.getReason());
+		return ResponseEntity.ok(reservationDtoMapper.toResponse(process));
 	}
 
 }
