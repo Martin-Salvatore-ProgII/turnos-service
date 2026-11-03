@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.example.turnos.reservation.domain.model.PageQuery;
+import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 
@@ -20,6 +22,10 @@ public interface ReservationProcessRepository {
 	// El proceso, solo si es de ese usuario. Uno de otro usuario da vacío, igual que uno inexistente
 	// (arq/seguridad.md).
 	Optional<ReservationProcess> findByIdAndUserId(UUID id, Long userId);
+
+	// Una página de los procesos de ese usuario, del más reciente al más antiguo. Con status, solo los que
+	// están en ese estado; null es sin filtro (HU-08, ADR-0025).
+	PageResult<ReservationProcess> findByUserId(Long userId, ReservationStatus status, PageQuery page);
 
 	// El proceso por su id local, sin filtrar por dueño: lo usa el servicio por su cuenta, no un pedido del
 	// usuario (por ejemplo, para releer un proceso que cambió en el medio, ADR-0068).

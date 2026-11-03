@@ -1,11 +1,29 @@
 package com.example.turnos.reservation.infrastructure.web.mapper;
 
+import com.example.turnos.reservation.domain.model.PageQuery;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.infrastructure.web.dto.ReservationListRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.ReservationResponse;
+import com.example.turnos.shared.infrastructure.config.PaginationProperties;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class ReservationDtoMapper {
+
+	private final PaginationProperties paginationProperties;
+
+	// Sin page ni size, la primera página con el tamaño por defecto (contratos.md, RNF-09).
+	public PageQuery toPageQuery(ReservationListRequest request) {
+		if (request == null) {
+			return null;
+		}
+		return PageQuery.builder()
+				.page(request.getPage() != null ? request.getPage() : 0)
+				.size(request.getSize() != null ? request.getSize() : paginationProperties.defaultSize())
+				.build();
+	}
 
 	public ReservationResponse toResponse(ReservationProcess process) {
 		if (process == null) {

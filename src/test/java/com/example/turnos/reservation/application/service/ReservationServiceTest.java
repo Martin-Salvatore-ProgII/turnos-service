@@ -7,13 +7,18 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import com.example.turnos.reservation.application.exception.ReservationException;
+import com.example.turnos.reservation.domain.model.PageQuery;
+import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
+import com.example.turnos.reservation.domain.ports.in.ListReservationsUseCase;
 import com.example.turnos.reservation.domain.ports.in.PurgeProcessedEventsUseCase;
 import com.example.turnos.reservation.domain.ports.in.ReconcileReservationProcessesUseCase;
 import com.example.turnos.reservation.domain.ports.in.StartReservationUseCase;
@@ -27,12 +32,13 @@ class ReservationServiceTest {
 
 	private final StartReservationUseCase startReservationUseCase = mock(StartReservationUseCase.class);
 	private final GetReservationUseCase getReservationUseCase = mock(GetReservationUseCase.class);
+	private final ListReservationsUseCase listReservationsUseCase = mock(ListReservationsUseCase.class);
 	private final HandleReservationEventUseCase handleReservationEventUseCase = mock(HandleReservationEventUseCase.class);
 	private final SubmitPhoneUseCase submitPhoneUseCase = mock(SubmitPhoneUseCase.class);
 	private final ReconcileReservationProcessesUseCase reconcileUseCase = mock(ReconcileReservationProcessesUseCase.class);
 	private final PurgeProcessedEventsUseCase purgeUseCase = mock(PurgeProcessedEventsUseCase.class);
 	private final ReservationService service = new ReservationService(startReservationUseCase, getReservationUseCase,
-			handleReservationEventUseCase, submitPhoneUseCase, reconcileUseCase, purgeUseCase);
+			listReservationsUseCase, handleReservationEventUseCase, submitPhoneUseCase, reconcileUseCase, purgeUseCase);
 
 	@Test
 	void startReservationDelegatesToItsUseCase() {
@@ -59,6 +65,15 @@ class ReservationServiceTest {
 		assertThatThrownBy(() -> service.getReservation("juan", ID))
 				.isInstanceOf(ReservationException.class)
 				.extracting("code").isEqualTo(ReservationException.Code.RESERVATION_NOT_FOUND);
+	}
+
+	@Test
+	void listReservationsReturnsThePageOfItsUseCase() {
+		PageQuery page = PageQuery.builder().page(0).size(20).build();
+		PageResult<ReservationProcess> result = PageResult.<ReservationProcess>builder().content(List.of()).build();
+		when(listReservationsUseCase.listReservations("juan", ReservationStatus.CONFIRMED, page)).thenReturn(result);
+
+		assertThat(service.listReservations("juan", ReservationStatus.CONFIRMED, page)).isSameAs(result);
 	}
 
 	@Test
