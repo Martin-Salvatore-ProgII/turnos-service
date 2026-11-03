@@ -11,8 +11,13 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.testcontainers.containers.GenericContainer;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import com.example.turnos.FakeCatedra;
 import com.example.turnos.FakeServer;
@@ -21,17 +26,27 @@ import com.example.turnos.reservation.domain.model.CatedraAppointment;
 import com.example.turnos.reservation.domain.model.CatedraAppointmentStatus;
 import com.example.turnos.reservation.infrastructure.rest.mapper.AppointmentMapper;
 import com.example.turnos.shared.infrastructure.config.CatedraProperties;
+import com.example.turnos.shared.infrastructure.config.CommandRetryProperties;
 import com.example.turnos.shared.infrastructure.config.CatedraRestClientConfig;
 import com.example.turnos.shared.infrastructure.rest.CatedraReadExecutor;
+import com.example.turnos.shared.infrastructure.rest.RemoteCommandRetry;
 import com.example.turnos.shared.infrastructure.rest.RemoteReadRetry;
 
 // Lo propio del cliente de reservas: el filtro por paciente, la paginación con X-Total-Count, los campos de la
-// REF §11 y que una falla se informe como cátedra no disponible. El reintento y los mensajes de falla son
+// REF §11 y que una falla se informe como cátedra no disponible. La cancelación (REF §12): el cuerpo, cuándo
+// se reintenta (ADR-0029) y cómo se informa cada respuesta. El reintento y los mensajes de falla son
 // los de toda lectura (CatedraReadExecutorTest). Sin Spring, contra una cátedra falsa (WireMock). La forma
 // de la respuesta es la que devolvió la cátedra real con probar-catedra.sh.
 class CatedraAppointmentAdapterTest {
 
-	private static final GenericContainer<?> catedra = FakeServer.newContainer();
+	// Solo HTTP/1.1, como la cátedra real: la cancelación es un POST (ver FakeCatedra.HTTP_1_ONLY).
+	private static final GenericContainer<?> catedra = FakeServer.newContainer().withCommand(FakeCatedra.HTTP_1_ONLY);
+	private static final JsonMapper JSON = JsonMapper.builder().build();
+	private static final String CANCEL_URL = "/api/appointments/process-1/cancel";
+	private static final String CANCELLED_BODY = """
+			{ "reservationId": 8251, "reservationProcessId": "process-1", "status": "CANCELLED",
+			  "cancelledAt": "2026-09-11T15:10:00Z" }
+			""";
 	private static final UUID PATIENT = UUID.fromString("0f8fad5b-d9cb-469f-a165-70867728950e");
 
 	@BeforeAll
@@ -130,6 +145,110 @@ class CatedraAppointmentAdapterTest {
 						.isEqualTo("The catedra rejected the technical JWT"));
 	}
 
+	@Test
+	void cancelsWithTheReasonAndReturnsTheMomentOfTheCatedra() {
+		// La cátedra falsa solo responde si el cuerpo es el de la REF §12 y viaja el JWT técnico.
+		ObjectNode mapping = cancelMapping(200, CANCELLED_BODY, 0);
+		ObjectNode request = (ObjectNode) mapping.get("request");
+		request.putArray("bodyPatterns").addObject().put("equalToJson", "{\"reason\":\"No puedo ir\"}");
+		request.putObject("headers").putObject("Authorization").put("equalTo", "Bearer " + FakeCatedra.TECHNICAL_TOKEN);
+		FakeServer.stub(catedra, mapping.toString());
+
+		assertThat(adapter().cancelAppointment("process-1", "No puedo ir"))
+				.isEqualTo(Instant.parse("2026-09-11T15:10:00Z"));
+		assertThat(cancellations()).isEqualTo(1);
+	}
+
+	@Test
+	void withoutReasonCancelsWithoutBody() {
+		ObjectNode mapping = cancelMapping(200, CANCELLED_BODY, 0);
+		((ObjectNode) mapping.get("request")).putArray("bodyPatterns").addObject().put("absent", true);
+		FakeServer.stub(catedra, mapping.toString());
+
+		assertThat(adapter().cancelAppointment("process-1", null)).isEqualTo(Instant.parse("2026-09-11T15:10:00Z"));
+	}
+
+	@Test
+	void aCancellationWithoutTheMomentIsStillACancellation() {
+		stubCancel(200, "{ \"status\": \"CANCELLED\" }", 0);
+
+		assertThat(adapter().cancelAppointment("process-1", null)).isNull();
+	}
+
+	@Test
+	void aReservationThatIsNotCancellableKeepsTheCodeAndIsNotRetried() {
+		stubCancel(409, problem(409, "RESERVATION_NOT_CANCELLABLE"), 0);
+
+		assertThatThrownBy(() -> adapter().cancelAppointment("process-1", null))
+				.isInstanceOfSatisfying(ReservationException.class, e -> assertThat(e.getCode())
+						.isEqualTo(ReservationException.Code.RESERVATION_NOT_CANCELLABLE));
+		assertThat(cancellations()).isEqualTo(1);
+	}
+
+	// Un 4xx que no es RESERVATION_NOT_CANCELLABLE no habla del pedido del usuario: la cátedra no conoce el
+	// proceso o rechazó el JWT técnico. Es una respuesta, así que tampoco se repite.
+	@ParameterizedTest
+	@CsvSource({ "404, RESERVATION_NOT_FOUND", "400, VALIDATION_ERROR", "403, STUDENT_INTEGRATION_NOT_FOUND" })
+	void anotherRejectionIsUnavailableAndIsNotRetried(int status, String code) {
+		stubCancel(status, problem(status, code), 0);
+
+		assertUnavailable(() -> adapter().cancelAppointment("process-1", null));
+		assertThat(cancellations()).isEqualTo(1);
+	}
+
+	@Test
+	void aCancellationWithoutAnswerIsTriedThreeTimes() {
+		stubCancel(503, "", 0);
+
+		assertUnavailable(() -> adapter().cancelAppointment("process-1", null));
+		assertThat(cancellations()).isEqualTo(3);
+	}
+
+	@Test
+	void aCancellationWhoseAnswerWasLostIsRecoveredOnTheRetry() {
+		// El caso del ADR-0029: el primer pedido llega pero la respuesta tarda más que el timeout; repetirlo
+		// es seguro porque la cátedra responde éxito si ya estaba cancelada.
+		ObjectNode first = cancelMapping(200, CANCELLED_BODY, 1500);
+		first.put("scenarioName", "cancelacion").put("requiredScenarioState", "Started").put("newScenarioState", "segundo");
+		FakeServer.stub(catedra, first.toString());
+		ObjectNode second = cancelMapping(200, CANCELLED_BODY, 0);
+		second.put("scenarioName", "cancelacion").put("requiredScenarioState", "segundo");
+		FakeServer.stub(catedra, second.toString());
+
+		assertThat(adapter().cancelAppointment("process-1", null)).isEqualTo(Instant.parse("2026-09-11T15:10:00Z"));
+		assertThat(cancellations()).isEqualTo(2);
+	}
+
+	// Lo que llega a la app no lleva el reservationProcessId (no se expone) ni la URL de la cátedra.
+	private static void assertUnavailable(ThrowingCallable cancellation) {
+		assertThatThrownBy(cancellation).isInstanceOfSatisfying(ReservationException.class, e -> {
+			assertThat(e.getCode()).isEqualTo(ReservationException.Code.INTEGRATION_UNAVAILABLE);
+			assertThat(e.getMessage()).doesNotContain("process-1").doesNotContain("http");
+		});
+	}
+
+	private static void stubCancel(int status, String body, int delayMillis) {
+		FakeServer.stub(catedra, cancelMapping(status, body, delayMillis).toString());
+	}
+
+	private static ObjectNode cancelMapping(int status, String body, int delayMillis) {
+		ObjectNode mapping = FakeCatedra.postMapping(CANCEL_URL, status, body);
+		if (delayMillis > 0) {
+			((ObjectNode) mapping.get("response")).put("fixedDelayMilliseconds", delayMillis);
+		}
+		return mapping;
+	}
+
+	// La forma de los errores que devolvió la cátedra real (application/problem+json).
+	private static String problem(int status, String code) {
+		return JSON.createObjectNode().put("type", "about:blank").put("title", "Error").put("status", status)
+				.put("detail", "detail").put("path", CANCEL_URL).put("code", code).toString();
+	}
+
+	private static int cancellations() {
+		return FakeServer.countRequests(catedra, "POST", CANCEL_URL);
+	}
+
 	private static String page(int from, int to) {
 		StringBuilder json = new StringBuilder("[");
 		for (int id = from; id <= to; id++) {
@@ -146,8 +265,10 @@ class CatedraAppointmentAdapterTest {
 	private static CatedraAppointmentAdapter adapter() {
 		CatedraProperties properties = new CatedraProperties(FakeServer.baseUrl(catedra), FakeCatedra.TECHNICAL_TOKEN,
 				Duration.ofSeconds(1), Duration.ofMillis(500));
+		// Esperas de pocos milisegundos entre reintentos, para que las pruebas no tarden.
+		RemoteCommandRetry retry = new RemoteCommandRetry(new CommandRetryProperties(2, Duration.ofMillis(10)));
 		return new CatedraAppointmentAdapter(new CatedraRestClientConfig().catedraRestClient(properties),
-				new CatedraReadExecutor(new RemoteReadRetry()), new AppointmentMapper());
+				new CatedraReadExecutor(new RemoteReadRetry()), retry, new AppointmentMapper());
 	}
 
 }
