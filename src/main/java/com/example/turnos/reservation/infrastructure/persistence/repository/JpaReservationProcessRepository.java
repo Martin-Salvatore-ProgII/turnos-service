@@ -9,6 +9,8 @@ import java.util.UUID;
 
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.infrastructure.persistence.entity.ReservationProcessEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -16,6 +18,10 @@ import org.springframework.stereotype.Repository;
 public interface JpaReservationProcessRepository extends JpaRepository<ReservationProcessEntity, UUID> {
 
 	Optional<ReservationProcessEntity> findByIdAndUserId(UUID id, Long userId);
+
+	Page<ReservationProcessEntity> findByUserId(Long userId, Pageable pageable);
+
+	Page<ReservationProcessEntity> findByUserIdAndStatus(Long userId, ReservationStatus status, Pageable pageable);
 
 	Optional<ReservationProcessEntity> findByReservationProcessId(String reservationProcessId);
 

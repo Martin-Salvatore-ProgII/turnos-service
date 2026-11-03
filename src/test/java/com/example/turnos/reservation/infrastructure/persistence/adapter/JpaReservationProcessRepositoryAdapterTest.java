@@ -13,6 +13,8 @@ import java.util.UUID;
 import com.example.turnos.TestcontainersConfiguration;
 import com.example.turnos.reservation.application.exception.ReservationException;
 import com.example.turnos.reservation.application.exception.ReservationProcessConflictException;
+import com.example.turnos.reservation.domain.model.PageQuery;
+import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.infrastructure.persistence.entity.ReservationProcessEntity;
@@ -288,6 +290,80 @@ class JpaReservationProcessRepositoryAdapterTest {
 
 		assertThat(adapter.findConfirmedFrom(LocalDate.of(2026, 11, 2))).extracting(ReservationProcess::getId)
 				.contains(future.getId()).doesNotContain(past.getId());
+	}
+
+	// Listar las reservas propias (HU-08, ADR-0025).
+	@Test
+	void findByUserIdReturnsOnlyTheProcessesOfTheUserFromTheNewestOn() {
+		ReservationProcess oldest = createdAt(adapter.create(finishedProcess()), "2026-11-01T10:00:00Z");
+		ReservationProcess newest = createdAt(adapter.create(finishedProcess()), "2026-11-03T10:00:00Z");
+		ReservationProcess middle = createdAt(adapter.create(finishedProcess()), "2026-11-02T10:00:00Z");
+		userId = insertUser("ana");
+		ReservationProcess otherUsers = adapter.create(finishedProcess());
+		entityManager.flush();
+		entityManager.clear();
+
+		PageResult<ReservationProcess> found = adapter.findByUserId(oldest.getUserId(), null, page(0, 20));
+
+		// La reserva de otro usuario no sale de la base: la consulta ya filtra por el dueño.
+		assertThat(found.getContent()).extracting(ReservationProcess::getId)
+				.containsExactly(newest.getId(), middle.getId(), oldest.getId())
+				.doesNotContain(otherUsers.getId());
+		assertThat(found.getTotalElements()).isEqualTo(3);
+	}
+
+	@Test
+	void findByUserIdCutsThePageAndCountsAllTheProcesses() {
+		ReservationProcess oldest = createdAt(adapter.create(finishedProcess()), "2026-11-01T10:00:00Z");
+		createdAt(adapter.create(finishedProcess()), "2026-11-02T10:00:00Z");
+		createdAt(adapter.create(finishedProcess()), "2026-11-03T10:00:00Z");
+		entityManager.flush();
+		entityManager.clear();
+
+		PageResult<ReservationProcess> found = adapter.findByUserId(userId, null, page(1, 2));
+
+		assertThat(found.getContent()).extracting(ReservationProcess::getId).containsExactly(oldest.getId());
+		assertThat(found.getTotalElements()).isEqualTo(3);
+		assertThat(found.getPage()).isEqualTo(1);
+		assertThat(found.getSize()).isEqualTo(2);
+	}
+
+	@Test
+	void findByUserIdFiltersByStatus() {
+		ReservationProcess confirmed = adapter.create(withStatus(ReservationStatus.CONFIRMED, null));
+		adapter.create(finishedProcess());
+		adapter.create(startedProcess());
+		entityManager.flush();
+		entityManager.clear();
+
+		PageResult<ReservationProcess> found = adapter.findByUserId(userId, ReservationStatus.CONFIRMED, page(0, 20));
+
+		assertThat(found.getContent()).extracting(ReservationProcess::getId).containsExactly(confirmed.getId());
+		assertThat(found.getTotalElements()).isEqualTo(1);
+	}
+
+	@Test
+	void findByUserIdOfAUserWithoutProcessesIsAnEmptyPage() {
+		PageResult<ReservationProcess> found = adapter.findByUserId(userId, null, page(0, 20));
+
+		assertThat(found.getContent()).isEmpty();
+		assertThat(found.getTotalElements()).isZero();
+	}
+
+	// La fecha de creación la pone la auditoría con la hora actual; para probar el orden sin depender de
+	// cuánto tarda cada inserción, se fija a mano.
+	private ReservationProcess createdAt(ReservationProcess process, String instant) {
+		entityManager.flush();
+		entityManager.getEntityManager()
+				.createNativeQuery("UPDATE reservation_process SET created_at = :createdAt WHERE id = :id")
+				.setParameter("createdAt", Instant.parse(instant))
+				.setParameter("id", process.getId())
+				.executeUpdate();
+		return process;
+	}
+
+	private static PageQuery page(int page, int size) {
+		return PageQuery.builder().page(page).size(size).build();
 	}
 
 	private ReservationProcess withStatus(ReservationStatus status, Instant expiresAt) {
