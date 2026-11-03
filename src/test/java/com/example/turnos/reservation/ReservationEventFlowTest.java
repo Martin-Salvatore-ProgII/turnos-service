@@ -192,6 +192,58 @@ class ReservationEventFlowTest {
 		getReservation(user, id).andExpect(jsonPath("$.failureReason").doesNotExist());
 	}
 
+	// REF §15.10: una reserva cancelada del lado de la cátedra (o cuyo 200 se perdió) queda cancelada por el
+	// evento, y la copia repetida se procesa una sola vez. Contra el Kafka simulado: la cátedra real todavía
+	// no publica eventos para este grupo.
+	@Test
+	void aConfirmedReservationIsCancelledByTheEventOfTheCatedraOnlyOnce() throws Exception {
+		User user = newUser();
+		String processId = stubHoldAndConfirmation("2026-11-02T15:41:00Z");
+		String id = confirmThroughKafka(user, processId);
+
+		String cancellation = cancelled("cancellation-event-" + id, processId, "\"Cambio solicitado\"");
+		publish(processId, cancellation);
+		publish(processId, cancellation);
+
+		awaitStatus(user, id, "CANCELLED");
+		getReservation(user, id)
+				.andExpect(jsonPath("$.cancellationReason").value("Cambio solicitado"))
+				.andExpect(jsonPath("$.cancelledAt").value("2026-11-02T15:30:00Z"));
+		assertThat(jdbcClient.sql("SELECT cancelled_by FROM reservation_process WHERE id = :id::uuid")
+				.param("id", id).query(String.class).single()).isEqualTo("CATEDRA");
+		assertThat(jdbcClient.sql("SELECT count(*) FROM processed_event WHERE event_id = :id")
+				.param("id", "cancellation-event-" + id).query(Long.class).single()).isEqualTo(1L);
+	}
+
+	// ADR-0026: con el 200 la reserva ya quedó cancelada por el dueño; el evento que la cátedra publica
+	// después es un duplicado funcional y no cambia nada.
+	@Test
+	void theEventAfterTheCancellationOfTheOwnerChangesNothing() throws Exception {
+		User user = newUser();
+		String processId = stubHoldAndConfirmation("2026-11-02T15:41:00Z");
+		String id = confirmThroughKafka(user, processId);
+		FakeServer.stub(catedraContainer, FakeCatedra.postMapping("/api/appointments/" + processId + "/cancel", 200, """
+				{ "reservationId": 8251, "reservationProcessId": "%s", "status": "CANCELLED",
+				  "cancelledAt": "2026-11-02T15:31:00Z" }
+				""".formatted(processId)).toString());
+		mockMvc.perform(post("/api/reservations/" + id + "/cancel")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"reason\":\"No puedo ir\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("CANCELLED"));
+
+		publish(processId, cancelled("cancellation-event-" + id, processId, "null"));
+
+		awaitEventRegistered("cancellation-event-" + id);
+		getReservation(user, id)
+				.andExpect(jsonPath("$.status").value("CANCELLED"))
+				.andExpect(jsonPath("$.cancellationReason").value("No puedo ir"))
+				.andExpect(jsonPath("$.cancelledAt").value("2026-11-02T15:31:00Z"));
+		assertThat(jdbcClient.sql("SELECT cancelled_by FROM reservation_process WHERE id = :id::uuid")
+				.param("id", id).query(String.class).single()).isEqualTo(user.login());
+	}
+
 	@Test
 	void anEventOfAProcessThatDoesNotExistIsIgnoredAndTheNextOneStillArrives() throws Exception {
 		User user = newUser();
@@ -315,6 +367,17 @@ class ReservationEventFlowTest {
 		return JsonPath.read(response, "$.id");
 	}
 
+	// El camino feliz completo hasta CONFIRMED, para las pruebas que siguen después de la confirmación.
+	private String confirmThroughKafka(User user, String processId) throws Exception {
+		String id = startReservation(user);
+		publish(processId, requested("request-event-" + id, processId, "2026-11-02T15:41:00Z"));
+		awaitStatus(user, id, "AWAITING_PHONE");
+		submitPhone(user, id, "2615551234").andExpect(status().isAccepted());
+		publish(processId, confirmed("confirmation-event-" + id, processId, 8251));
+		awaitStatus(user, id, "CONFIRMED");
+		return id;
+	}
+
 	private ResultActions getReservation(User user, String id) throws Exception {
 		return mockMvc.perform(get("/api/reservations/" + id).header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token()));
 	}
@@ -351,6 +414,12 @@ class ReservationEventFlowTest {
 	private static String confirmed(String eventId, String processId, long reservationId) {
 		return event(eventId, "AppointmentConfirmed", processId, "\"reservationId\":" + reservationId
 				+ ",\"professionalId\":204,\"date\":\"" + NEXT_MONDAY + "\",\"startTime\":\"11:20\",\"status\":\"CONFIRMED\"");
+	}
+
+	// reason va como JSON: un texto entre comillas o null (REF §15.10).
+	private static String cancelled(String eventId, String processId, String reason) {
+		return event(eventId, "AppointmentCancelled", processId, "\"reservationId\":8251,\"professionalId\":204,"
+				+ "\"date\":\"" + NEXT_MONDAY + "\",\"startTime\":\"11:20\",\"status\":\"CANCELLED\",\"reason\":" + reason);
 	}
 
 	private static String event(String eventId, String eventType, String processId, String extraFields) {

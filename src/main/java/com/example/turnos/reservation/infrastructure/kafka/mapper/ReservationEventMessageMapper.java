@@ -51,7 +51,7 @@ public class ReservationEventMessageMapper {
 		}
 		ReservationEventType type = typeOf(message.eventType());
 		if (type == null) {
-			// Por ejemplo AppointmentCancelled, que se procesa recién en la milestone de cancelación.
+			// Un tipo nuevo de la cátedra que este servicio todavía no conoce (ADR-0031).
 			log.info("Event {} ignored: eventType {} is not handled", message.eventId(), message.eventType());
 			return Optional.empty();
 		}
@@ -79,6 +79,7 @@ public class ReservationEventMessageMapper {
 			case "AppointmentConfirmed" -> ReservationEventType.APPOINTMENT_CONFIRMED;
 			case "AppointmentProcessExpired" -> ReservationEventType.PROCESS_EXPIRED;
 			case "AppointmentProcessInvalid" -> ReservationEventType.PROCESS_INVALID;
+			case "AppointmentCancelled" -> ReservationEventType.APPOINTMENT_CANCELLED;
 			default -> null;
 		};
 	}

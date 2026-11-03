@@ -62,6 +62,22 @@ class ReservationEventMessageMapperTest {
 		assertThat(event.get().getReason()).isEqualTo("MOTIVO");
 	}
 
+	// El ejemplo de la REF §15.10. reason puede venir en null.
+	@Test
+	void readsAnAppointmentCancelledWithoutReason() {
+		Optional<ReservationEvent> event = mapper.toDomain("""
+				{"eventId":"cancellation-event-7d14","eventType":"AppointmentCancelled","groupId":"g",
+				"reservationProcessId":"process-a92b47d0","holdId":"h","requestEventId":"r","reservationId":8251,
+				"professionalId":15,"date":"2026-09-14","startTime":"09:30","status":"CANCELLED","reason":null,
+				"occurredAt":"2026-09-11T15:10:00Z","schemaVersion":1}
+				""");
+
+		assertThat(event).isPresent();
+		assertThat(event.get().getType()).isEqualTo(ReservationEventType.APPOINTMENT_CANCELLED);
+		assertThat(event.get().getReason()).isNull();
+		assertThat(event.get().getOccurredAt()).isEqualTo(Instant.parse("2026-09-11T15:10:00Z"));
+	}
+
 	@Test
 	void ignoresUnknownFieldsCompatibleWithV1() {
 		Optional<ReservationEvent> event = mapper.toDomain("""
@@ -74,7 +90,7 @@ class ReservationEventMessageMapperTest {
 
 	@Test
 	void discardsAnUnknownEventType() {
-		assertThat(mapper.toDomain("{\"eventId\":\"e-1\",\"eventType\":\"AppointmentCancelled\","
+		assertThat(mapper.toDomain("{\"eventId\":\"e-1\",\"eventType\":\"AlgoNuevo\","
 				+ "\"reservationProcessId\":\"p-1\",\"schemaVersion\":1}")).isEmpty();
 	}
 

@@ -91,8 +91,12 @@ class HandleReservationEventUseCaseImplTest {
 	@ParameterizedTest
 	@EnumSource(ReservationEventType.class)
 	void everyEventTypeMovesAWaitingProcessToItsStatus(ReservationEventType type) {
-		ReservationStatus from = type == ReservationEventType.INFORMATION_REJECTED ? ReservationStatus.PHONE_SUBMITTED
-				: ReservationStatus.AWAITING_REQUEST;
+		ReservationStatus from = switch (type) {
+			case INFORMATION_REJECTED -> ReservationStatus.PHONE_SUBMITTED;
+			// La única salida de un estado final (maquina-estados.md, regla 2).
+			case APPOINTMENT_CANCELLED -> ReservationStatus.CONFIRMED;
+			default -> ReservationStatus.AWAITING_REQUEST;
+		};
 		ReservationProcess process = process(from);
 		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
 		when(processedEventRepository.registerIfNew("evento-1", NOW)).thenReturn(true);
@@ -105,6 +109,7 @@ class HandleReservationEventUseCaseImplTest {
 			case APPOINTMENT_CONFIRMED -> ReservationStatus.CONFIRMED;
 			case PROCESS_EXPIRED -> ReservationStatus.EXPIRED;
 			case PROCESS_INVALID -> ReservationStatus.INVALID;
+			case APPOINTMENT_CANCELLED -> ReservationStatus.CANCELLED;
 		});
 		verify(reservationProcessRepository).update(LOCAL_ID, process);
 	}
@@ -228,6 +233,60 @@ class HandleReservationEventUseCaseImplTest {
 		assertThat(process.getConfirmedAt()).isEqualTo(NOW);
 	}
 
+	// REF §15.10: una reserva cancelada por otro camino (o cuyo 200 se perdió) queda cancelada con lo que
+	// informa la cátedra, que es quien la canceló para este servicio.
+	@Test
+	void aCancellationKeepsWhenAndWhyAndThatTheCatedraInformedIt() {
+		ReservationProcess process = process(ReservationStatus.CONFIRMED);
+		Instant cancelledAt = Instant.parse("2026-09-11T15:10:00Z");
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+		when(processedEventRepository.registerIfNew("cancelacion-1", NOW)).thenReturn(true);
+		when(reservationProcessRepository.update(LOCAL_ID, process)).thenReturn(Optional.of(process));
+
+		assertThat(useCase.handleReservationEvent(ReservationEvent.builder().eventId("cancelacion-1")
+				.type(ReservationEventType.APPOINTMENT_CANCELLED).reservationProcessId(PROCESS_ID)
+				.reason("Cambio solicitado por el usuario").occurredAt(cancelledAt).build()))
+				.isEqualTo(EventHandlingResult.APPLIED);
+
+		assertThat(process.getStatus()).isEqualTo(ReservationStatus.CANCELLED);
+		assertThat(process.getCancelledAt()).isEqualTo(cancelledAt);
+		assertThat(process.getCancellationReason()).isEqualTo("Cambio solicitado por el usuario");
+		assertThat(process.getCancelledBy()).isEqualTo(ReservationProcess.CANCELLED_BY_CATEDRA);
+	}
+
+	@Test
+	void aCancellationWithoutTimeUsesTheCurrentTime() {
+		ReservationProcess process = process(ReservationStatus.CONFIRMED);
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+		when(processedEventRepository.registerIfNew("cancelacion-1", NOW)).thenReturn(true);
+		when(reservationProcessRepository.update(LOCAL_ID, process)).thenReturn(Optional.of(process));
+
+		useCase.handleReservationEvent(ReservationEvent.builder().eventId("cancelacion-1")
+				.type(ReservationEventType.APPOINTMENT_CANCELLED).reservationProcessId(PROCESS_ID).build());
+
+		assertThat(process.getCancelledAt()).isEqualTo(NOW);
+		assertThat(process.getCancellationReason()).isNull();
+	}
+
+	// ADR-0026: el usuario ya canceló y el 200 dejó la reserva CANCELLED; el evento que la cátedra publica
+	// después no cambia nada, ni siquiera quién la canceló.
+	@Test
+	void theEventAfterTheCancellationOfTheOwnerChangesNothing() {
+		ReservationProcess process = process(ReservationStatus.CANCELLED);
+		process.setCancelledBy("juan");
+		process.setCancellationReason("No puedo ir");
+		when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
+		when(processedEventRepository.registerIfNew("cancelacion-1", NOW)).thenReturn(true);
+
+		assertThat(useCase.handleReservationEvent(ReservationEvent.builder().eventId("cancelacion-1")
+				.type(ReservationEventType.APPOINTMENT_CANCELLED).reservationProcessId(PROCESS_ID)
+				.reason("No puedo ir").build()))
+				.isEqualTo(EventHandlingResult.NO_TRANSITION);
+
+		assertThat(process.getCancelledBy()).isEqualTo("juan");
+		verify(reservationProcessRepository, never()).update(any(), any());
+	}
+
 	@Test
 	void anExpiredOrInvalidProcessKeepsTheReasonOfTheCatedra() {
 		ReservationProcess expired = process(ReservationStatus.AWAITING_PHONE);
@@ -251,11 +310,15 @@ class HandleReservationEventUseCaseImplTest {
 		assertThat(invalid.getFailureReason()).isEqualTo("REQUEST_EVENT_MISMATCH");
 	}
 
-	// ADR-0023: un estado final no se reabre. Cada evento tardío, de cualquier tipo, se ignora.
+	// ADR-0023: un estado final no se reabre. Cada evento tardío, de cualquier tipo, se ignora, salvo la
+	// cancelación de uno confirmado, que es la única salida de un estado final.
 	@ParameterizedTest
-	@EnumSource(value = ReservationStatus.class, names = { "CONFIRMED", "EXPIRED", "INVALID", "FAILED" })
+	@EnumSource(value = ReservationStatus.class, names = { "CONFIRMED", "CANCELLED", "EXPIRED", "INVALID", "FAILED" })
 	void noLateEventReopensAFinalProcess(ReservationStatus finalStatus) {
 		for (ReservationEventType type : ReservationEventType.values()) {
+			if (finalStatus == ReservationStatus.CONFIRMED && type == ReservationEventType.APPOINTMENT_CANCELLED) {
+				continue;
+			}
 			ReservationProcess process = process(finalStatus);
 			process.setReservationId(8251L);
 			when(reservationProcessRepository.findByReservationProcessId(PROCESS_ID)).thenReturn(Optional.of(process));
