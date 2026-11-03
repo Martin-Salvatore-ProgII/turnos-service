@@ -202,7 +202,7 @@ class ReservationFlowTest {
 	@Test
 	void aReservationThatIsNotConfirmedIsNotCancelledAndTheCatedraIsNotCalled() throws Exception {
 		String token = newUserToken();
-		stubHoldAndConfirmation();
+		String holdId = stubHoldAndConfirmation();
 		String id = JsonPath.read(startReservation(token, 204, NEXT_MONDAY, "11:20")
 				.andExpect(status().isCreated())
 				.andReturn().getResponse().getContentAsString(), "$.id");
@@ -211,7 +211,8 @@ class ReservationFlowTest {
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("RESERVATION_NOT_CANCELLABLE"));
 		getReservation(token, id).andExpect(jsonPath("$.status").value("AWAITING_REQUEST"));
-		assertThat(FakeServer.countRequestsToPath(catedraContainer, "POST", "/api/appointments")).isZero();
+		assertThat(FakeServer.countRequests(catedraContainer, "POST", "/api/appointments/process-" + holdId + "/cancel"))
+				.isZero();
 	}
 
 	// HU-09, criterio 5: sin respuesta de la cátedra, la reserva no cambia.

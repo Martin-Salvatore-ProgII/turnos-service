@@ -91,8 +91,8 @@ Ninguna habla con la cátedra real: los eventos se publican en un Kafka de Testc
 | --- | --- | --- |
 | La configuración del consumidor y del productor: servidores y grupo de la integración, ack manual, `earliest`, `acks=all`, sin reintentos propios, timeouts | `shared/infrastructure/config/KafkaConfigTest` | No |
 | Registro de eventos por `eventId`: uno nuevo, un duplicado, diez simultáneos (gana uno), purga por antigüedad | `reservation/infrastructure/persistence/adapter/JpaProcessedEventRepositoryAdapterTest`, `reservation/application/usecases/PurgeProcessedEventsUseCaseImplTest` | Sí / No |
-| Cada evento sobre el proceso: desconocido, duplicado, sin transición, cada tipo, el pedido de teléfono (también sobre `HELD`), el rechazo, la confirmación, el vencimiento, la invalidez, ningún evento tardío reabre un final | `reservation/application/usecases/HandleReservationEventUseCaseImplTest` | No |
-| Interpretación de los mensajes de la REF §15: cada tipo, campos desconocidos, tipo desconocido, JSON roto, datos faltantes, fecha inválida | `reservation/infrastructure/kafka/mapper/ReservationEventMessageMapperTest` | No |
+| Cada evento sobre el proceso: desconocido, duplicado, sin transición, cada tipo, el pedido de teléfono (también sobre `HELD`), el rechazo, la confirmación, el vencimiento, la invalidez, la cancelación (y que después de la del dueño no cambia nada), ningún evento tardío reabre un final | `reservation/application/usecases/HandleReservationEventUseCaseImplTest` | No |
+| Interpretación de los mensajes de la REF §15: cada tipo (también `AppointmentCancelled` sin motivo), campos desconocidos, tipo desconocido, JSON roto, datos faltantes, fecha inválida | `reservation/infrastructure/kafka/mapper/ReservationEventMessageMapperTest` | No |
 | El adaptador de entrada: entrega a la fachada, reintentos (la entrega y 3 más), offset confirmado siempre al final | `reservation/infrastructure/kafka/consumer/ReservationEventListenerTest` | No |
 | El consumidor real con un Kafka real: entrega, mensajes inválidos o desconocidos, falla persistente, offset confirmado | `reservation/infrastructure/kafka/consumer/ReservationEventKafkaTest` | Sí |
 | La regla del teléfono de la cátedra (ADR-0027) | `reservation/domain/model/PhoneNumberTest` | No |
@@ -103,7 +103,20 @@ Ninguna habla con la cátedra real: los eventos se publican en un Kafka de Testc
 | Reconciliación, caso por caso (CU-05): `STARTED`, vencidos sin teléfono, enviados confirmados o fallidos, confirmados cancelados, cátedra caída, conflicto con un evento | `reservation/application/usecases/ReconcileReservationProcessesUseCaseImplTest` | No |
 | El cliente de `GET /api/appointments`: filtro por paciente, paginación con `X-Total-Count`, estado desconocido, cátedra caída o que rechaza el token | `reservation/infrastructure/rest/adapter/CatedraAppointmentAdapterTest` | Sí |
 | El disparador de la reconciliación: valores configurados, un ciclo que falla no lo detiene, corre al arrancar | `reservation/infrastructure/scheduler/ReservationReconciliationSchedulerTest`, `ReservationReconciliationStartupTest` | No / Sí |
-| El recorrido completo con todo real salvo la cátedra: reserva confirmada con teléfono, vencida sin teléfono, rechazo y reenvío, evento duplicado y tardío, proceso inexistente, otro usuario, teléfono inválido, reconciliación | `reservation/ReservationEventFlowTest` | Sí |
+| El recorrido completo con todo real salvo la cátedra: reserva confirmada con teléfono, vencida sin teléfono, rechazo y reenvío, evento duplicado y tardío, proceso inexistente, otro usuario, teléfono inválido, reconciliación, cancelación informada por la cátedra (una sola vez aunque se repita) y el evento después de la cancelación del dueño | `reservation/ReservationEventFlowTest` | Sí |
+
+## Pruebas de mis reservas
+
+| Qué se quiere comprobar | Dónde | Necesita Docker |
+| --- | --- | --- |
+| Las cabeceras de una página (`X-Total-Count` y `Link`) y el tamaño máximo configurable | `shared/infrastructure/web/pagination/PaginationHeadersTest`, `MaxPageSizeValidatorTest` | No |
+| Listar: solo las del dueño, de la más reciente a la más antigua, la página y el total, el filtro por estado, un usuario sin reservas | `reservation/infrastructure/persistence/adapter/JpaReservationProcessRepositoryAdapterTest`, `reservation/application/usecases/ListReservationsUseCaseImplTest` | Sí / No |
+| `GET /api/reservations`: forma de la lista y cabeceras, valores por defecto, parámetros inválidos | `reservation/infrastructure/web/controller/ReservationControllerTest` | No |
+| El cliente de la cancelación (REF §12): el cuerpo con y sin motivo, el JWT técnico, `RESERVATION_NOT_CANCELLABLE` sin reintento, otro 4xx como cátedra no disponible, 3 intentos sin respuesta, respuesta perdida que se recupera, sin el `reservationProcessId` ni la URL en el mensaje | `reservation/infrastructure/rest/adapter/CatedraAppointmentAdapterTest` | Sí |
+| Cancelar: con lo que responde la cátedra, ya cancelada sin llamarla, ajena, no confirmada, turno empezado o no (ADR-0071), cátedra que rechaza o no responde, un evento que llega mientras tanto | `reservation/application/usecases/CancelReservationUseCaseImplTest` | No |
+| `POST /api/reservations/{id}/cancel`: con y sin cuerpo, motivo de más de 500 caracteres, un código HTTP por cada rechazo | `reservation/infrastructure/web/controller/ReservationControllerTest` | No |
+| El recorrido completo: cancelar y volver a cancelar, una reserva no confirmada, la cátedra sin respuesta | `reservation/ReservationFlowTest` | Sí |
+| Dos usuarios: cada uno lista solo las suyas (sin pedir nada al catálogo ni a la cátedra), y ver o cancelar la ajena da el mismo 404 que una inexistente | `reservation/ReservationIsolationTest` | Sí |
 
 ## Levantar la aplicación con una base descartable
 
