@@ -1,12 +1,10 @@
 package com.example.turnos.shared.infrastructure.config;
 
-import java.net.http.HttpClient;
-
+import com.example.turnos.shared.infrastructure.rest.NoRetryRequestFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -19,18 +17,12 @@ import org.springframework.web.client.RestClient;
 @EnableConfigurationProperties(CatalogProperties.class)
 public class CatalogRestClientConfig {
 
-	// Mismos timeouts y mismo HttpClient que hacia la cátedra, que no reintenta por su cuenta
-	// (ADR-0029).
+	// Misma conexión que hacia la cátedra: con timeouts y sin reintentos propios (ADR-0029).
 	@Bean
 	public RestClient catalogRestClient(CatalogProperties properties) {
-		HttpClient httpClient = HttpClient.newBuilder()
-				.connectTimeout(properties.connectTimeout())
-				.build();
-		JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-		requestFactory.setReadTimeout(properties.readTimeout());
 		return RestClient.builder()
 				.baseUrl(properties.apiUrl())
-				.requestFactory(requestFactory)
+				.requestFactory(NoRetryRequestFactory.create(properties.connectTimeout(), properties.readTimeout()))
 				.requestInterceptor(forwardUserToken())
 				.build();
 	}
