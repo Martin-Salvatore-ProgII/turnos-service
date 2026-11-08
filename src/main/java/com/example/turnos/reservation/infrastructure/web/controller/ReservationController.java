@@ -1,13 +1,18 @@
 package com.example.turnos.reservation.infrastructure.web.controller;
 
+import java.util.List;
 import java.util.UUID;
 
 import com.example.turnos.reservation.application.service.ReservationService;
+import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.infrastructure.web.dto.CancelReservationRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.PhoneRequest;
+import com.example.turnos.reservation.infrastructure.web.dto.ReservationListRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.ReservationRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.ReservationResponse;
 import com.example.turnos.reservation.infrastructure.web.mapper.ReservationDtoMapper;
+import com.example.turnos.shared.infrastructure.web.pagination.PaginationHeaders;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -39,6 +44,18 @@ public class ReservationController {
 		return new ResponseEntity<>(reservationDtoMapper.toResponse(process), HttpStatus.CREATED);
 	}
 
+	// Las reservas del usuario del token, nunca las de otro: el usuario no es un parámetro (HU-08, RNF-03).
+	// El total y los enlaces a las páginas vecinas van en las cabeceras, como en el resto de las listas.
+	@GetMapping
+	public ResponseEntity<List<ReservationResponse>> listReservations(@Valid ReservationListRequest request,
+			Authentication authentication) {
+		PageResult<ReservationProcess> result = reservationService.listReservations(authentication.getName(),
+				request.getStatus(), reservationDtoMapper.toPageQuery(request));
+		return ResponseEntity.ok()
+				.headers(PaginationHeaders.of(result.getTotalElements(), result.getPage(), result.getSize()))
+				.body(result.getContent().stream().map(reservationDtoMapper::toResponse).toList());
+	}
+
 	// La operación que la app consulta cada pocos segundos mientras el proceso no es final (ADR-0021).
 	@GetMapping("/{id}")
 	public ResponseEntity<ReservationResponse> getReservation(@PathVariable UUID id, Authentication authentication) {
@@ -54,6 +71,16 @@ public class ReservationController {
 		ReservationProcess process = reservationService.submitPhone(authentication.getName(), id,
 				request.getPhoneNumber());
 		return new ResponseEntity<>(reservationDtoMapper.toResponse(process), HttpStatus.ACCEPTED);
+	}
+
+	// 200 con la reserva en CANCELLED, también si ya lo estaba (contratos.md). El cuerpo es opcional: sin
+	// él, se cancela sin motivo.
+	@PostMapping("/{id}/cancel")
+	public ResponseEntity<ReservationResponse> cancelReservation(@PathVariable UUID id,
+			@Valid @RequestBody(required = false) CancelReservationRequest request, Authentication authentication) {
+		ReservationProcess process = reservationService.cancelReservation(authentication.getName(), id,
+				request == null ? null : request.getReason());
+		return ResponseEntity.ok(reservationDtoMapper.toResponse(process));
 	}
 
 }

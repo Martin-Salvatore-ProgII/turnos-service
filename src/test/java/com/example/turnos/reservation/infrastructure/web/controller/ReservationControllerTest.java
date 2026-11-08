@@ -4,26 +4,34 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.example.turnos.catalog.application.exception.CatalogUnavailableException;
 import com.example.turnos.reservation.application.exception.ReservationException;
 import com.example.turnos.reservation.application.service.ReservationService;
+import com.example.turnos.reservation.domain.model.PageQuery;
+import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.infrastructure.web.mapper.ReservationDtoMapper;
+import com.example.turnos.shared.infrastructure.config.PaginationConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -41,7 +49,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 // seguridad: el usuario se pasa como principal del pedido, y el acceso se prueba en ReservationFlowTest.
 @AutoConfigureMockMvc(addFilters = false)
 @WebMvcTest(ReservationController.class)
-@Import(ReservationDtoMapper.class)
+@Import({ ReservationDtoMapper.class, PaginationConfig.class })
 class ReservationControllerTest {
 
 	private static final UUID ID = UUID.fromString("5b1f0c2e-8d7a-4a51-9e0b-1f2d3c4b5a69");
@@ -191,6 +199,107 @@ class ReservationControllerTest {
 				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
 				.andExpect(jsonPath("$.fieldErrors[0].field").value("id"));
 		verifyNoInteractions(reservationService);
+	}
+
+	@Test
+	void listsTheReservationsOfTheUserOfTheTokenWithThePaginationHeaders() throws Exception {
+		PageQuery page = PageQuery.builder().page(1).size(5).build();
+		when(reservationService.listReservations(eq("juan"), eq(ReservationStatus.CONFIRMED), any()))
+				.thenReturn(PageResult.<ReservationProcess>builder()
+						.content(List.of(process()))
+						.totalElements(6)
+						.page(1)
+						.size(5)
+						.build());
+
+		mockMvc.perform(asJuan(get("/api/reservations").param("status", "CONFIRMED").param("page", "1")
+						.param("size", "5")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				// Cada elemento es la misma representación que la de ver una reserva (contratos.md).
+				.andExpect(jsonPath("$[0].id").value(ID.toString()))
+				.andExpect(jsonPath("$[0].status").value("AWAITING_REQUEST"))
+				.andExpect(jsonPath("$[0].startTime").value("11:20:00"))
+				.andExpect(header().string("X-Total-Count", "6"))
+				.andExpect(header().string("Link", containsString("rel=\"prev\"")))
+				.andExpect(content().string(not(containsString("hold"))));
+		verify(reservationService).listReservations(eq("juan"), eq(ReservationStatus.CONFIRMED),
+				argThat(query -> query.getPage() == page.getPage() && query.getSize() == page.getSize()));
+	}
+
+	@Test
+	void withoutParametersListsTheFirstPageWithTheDefaultSizeAndNoFilter() throws Exception {
+		when(reservationService.listReservations(eq("juan"), isNull(), any()))
+				.thenReturn(PageResult.<ReservationProcess>builder().content(List.of()).page(0).size(20).build());
+
+		mockMvc.perform(asJuan(get("/api/reservations")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(0)))
+				.andExpect(header().string("X-Total-Count", "0"));
+		verify(reservationService).listReservations(eq("juan"), isNull(),
+				argThat(query -> query.getPage() == 0 && query.getSize() == 20));
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "status, PENDING", "page, -1", "size, 0", "size, 101", "page, abc" })
+	void anInvalidListParameterIsAValidationError(String parameter, String value) throws Exception {
+		mockMvc.perform(asJuan(get("/api/reservations").param(parameter, value)))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value(parameter));
+		verifyNoInteractions(reservationService);
+	}
+
+	@Test
+	void cancelsTheReservationOfTheUserOfTheTokenWithTheReason() throws Exception {
+		ReservationProcess cancelled = process();
+		cancelled.setStatus(ReservationStatus.CANCELLED);
+		cancelled.setCancelledAt(Instant.parse("2026-11-02T16:00:00Z"));
+		cancelled.setCancellationReason("No puedo ir");
+		cancelled.setCancelledBy("juan");
+		when(reservationService.cancelReservation("juan", ID, "No puedo ir")).thenReturn(cancelled);
+
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/cancel")).contentType(MediaType.APPLICATION_JSON)
+						.content("{\"reason\":\"No puedo ir\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(ID.toString()))
+				.andExpect(jsonPath("$.status").value("CANCELLED"))
+				.andExpect(jsonPath("$.cancelledAt").value("2026-11-02T16:00:00Z"))
+				.andExpect(jsonPath("$.cancellationReason").value("No puedo ir"))
+				// Quién canceló es un dato de la administración, no de la representación del dueño.
+				.andExpect(content().string(not(containsString("cancelledBy"))));
+	}
+
+	@Test
+	void theBodyOfTheCancellationIsOptional() throws Exception {
+		ReservationProcess cancelled = process();
+		cancelled.setStatus(ReservationStatus.CANCELLED);
+		when(reservationService.cancelReservation("juan", ID, null)).thenReturn(cancelled);
+
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/cancel")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("CANCELLED"));
+	}
+
+	@Test
+	void aReasonOfMoreThan500CharactersIsAValidationError() throws Exception {
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/cancel")).contentType(MediaType.APPLICATION_JSON)
+						.content("{\"reason\":\"" + "x".repeat(501) + "\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value("reason"));
+		verifyNoInteractions(reservationService);
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "RESERVATION_NOT_FOUND, 404", "RESERVATION_NOT_CANCELLABLE, 409", "INTEGRATION_UNAVAILABLE, 503" })
+	void eachCancellationRejectionHasTheStatusOfTheContract(ReservationException.Code code, int status)
+			throws Exception {
+		when(reservationService.cancelReservation("juan", ID, null)).thenThrow(new ReservationException(code, "no"));
+
+		mockMvc.perform(asJuan(post("/api/reservations/" + ID + "/cancel")))
+				.andExpect(status().is(status))
+				.andExpect(jsonPath("$.code").value(code.name()));
 	}
 
 	// El usuario que dejaría la seguridad después de validar el JWT: su login es el nombre.

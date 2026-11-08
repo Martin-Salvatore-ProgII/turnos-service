@@ -7,10 +7,15 @@ import java.util.UUID;
 
 import com.example.turnos.reservation.application.exception.ReservationException;
 import com.example.turnos.reservation.domain.model.EventHandlingResult;
+import com.example.turnos.reservation.domain.model.PageQuery;
+import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationEvent;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.domain.model.ReservationStatus;
+import com.example.turnos.reservation.domain.ports.in.CancelReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
+import com.example.turnos.reservation.domain.ports.in.ListReservationsUseCase;
 import com.example.turnos.reservation.domain.ports.in.PurgeProcessedEventsUseCase;
 import com.example.turnos.reservation.domain.ports.in.ReconcileReservationProcessesUseCase;
 import com.example.turnos.reservation.domain.ports.in.StartReservationUseCase;
@@ -24,8 +29,10 @@ public class ReservationService {
 
 	private final StartReservationUseCase startReservationUseCase;
 	private final GetReservationUseCase getReservationUseCase;
+	private final ListReservationsUseCase listReservationsUseCase;
 	private final HandleReservationEventUseCase handleReservationEventUseCase;
 	private final SubmitPhoneUseCase submitPhoneUseCase;
+	private final CancelReservationUseCase cancelReservationUseCase;
 	private final ReconcileReservationProcessesUseCase reconcileReservationProcessesUseCase;
 	private final PurgeProcessedEventsUseCase purgeProcessedEventsUseCase;
 
@@ -42,9 +49,19 @@ public class ReservationService {
 						"Could not find reservation with id: " + id));
 	}
 
+	// Sin rechazos propios: un usuario sin reservas recibe una página vacía.
+	public PageResult<ReservationProcess> listReservations(String login, ReservationStatus status, PageQuery page) {
+		return listReservationsUseCase.listReservations(login, status, page);
+	}
+
 	// Como iniciar: el caso de uso informa cada rechazo con su código (ADR-0059).
 	public ReservationProcess submitPhone(String login, UUID id, String phoneNumber) {
 		return submitPhoneUseCase.submitPhone(login, id, phoneNumber);
+	}
+
+	// Como iniciar: el caso de uso informa cada rechazo con su código (ADR-0059).
+	public ReservationProcess cancelReservation(String login, UUID id, String reason) {
+		return cancelReservationUseCase.cancelReservation(login, id, reason);
 	}
 
 	// Las dos las llama el scheduler de la reconciliación (ADR-0030).

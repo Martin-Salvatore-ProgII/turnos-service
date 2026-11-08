@@ -25,12 +25,14 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.containers.GenericContainer;
 
 /**
- * Recorrido de CU-04 hasta la confirmación inicial, con la aplicación entera y la seguridad activa: el
+ * Recorrido de CU-04 hasta la confirmación inicial y de la cancelación (HU-09), con la aplicación entera y la seguridad activa: el
  * usuario se registra e inicia sesión de verdad, y el catálogo y la cátedra son falsos (WireMock). Las
  * respuestas de la cátedra son las que dio la real con probar-reserva-catedra.sh. "Hoy" es el lunes
  * 2026-11-02 a las 12:30 de Argentina ({@link TestClockConfiguration}); Laura Medina (204) atiende los
@@ -53,6 +55,9 @@ class ReservationFlowTest {
 
 	@Autowired
 	private GenericContainer<?> catedraContainer;
+
+	@Autowired
+	private JdbcClient jdbcClient;
 
 	@BeforeEach
 	void setUp() {
@@ -163,12 +168,79 @@ class ReservationFlowTest {
 		assertThat(FakeServer.countRequests(catedraContainer, "POST", HOLDS_PATH)).isZero();
 	}
 
+	// HU-09: con el 200 de la cátedra la reserva queda cancelada (ADR-0026); cancelarla otra vez es un éxito
+	// sin cambios y sin volver a llamar a la cátedra.
+	@Test
+	void cancelsAConfirmedReservationAndCancellingItAgainChangesNothing() throws Exception {
+		String token = newUserToken();
+		String holdId = stubHoldAndConfirmation();
+		String id = JsonPath.read(startReservation(token, 204, NEXT_MONDAY, "11:20")
+				.andExpect(status().isCreated())
+				.andReturn().getResponse().getContentAsString(), "$.id");
+		confirm(id);
+		String cancelUrl = "/api/appointments/process-" + holdId + "/cancel";
+		FakeServer.stub(catedraContainer, FakeCatedra.postMapping(cancelUrl, 200, """
+				{ "reservationId": 8251, "reservationProcessId": "process-%s", "status": "CANCELLED",
+				  "cancelledAt": "2026-11-02T15:35:00Z" }
+				""".formatted(holdId)).toString());
+
+		cancelReservation(token, id, "{\"reason\":\"No puedo ir\"}")
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(id))
+				.andExpect(jsonPath("$.status").value("CANCELLED"))
+				.andExpect(jsonPath("$.cancelledAt").value("2026-11-02T15:35:00Z"))
+				.andExpect(jsonPath("$.cancellationReason").value("No puedo ir"));
+		getReservation(token, id).andExpect(jsonPath("$.status").value("CANCELLED"));
+
+		cancelReservation(token, id, null)
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("CANCELLED"))
+				.andExpect(jsonPath("$.cancellationReason").value("No puedo ir"));
+		assertThat(FakeServer.countRequests(catedraContainer, "POST", cancelUrl)).isEqualTo(1);
+	}
+
+	@Test
+	void aReservationThatIsNotConfirmedIsNotCancelledAndTheCatedraIsNotCalled() throws Exception {
+		String token = newUserToken();
+		String holdId = stubHoldAndConfirmation();
+		String id = JsonPath.read(startReservation(token, 204, NEXT_MONDAY, "11:20")
+				.andExpect(status().isCreated())
+				.andReturn().getResponse().getContentAsString(), "$.id");
+
+		cancelReservation(token, id, null)
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("RESERVATION_NOT_CANCELLABLE"));
+		getReservation(token, id).andExpect(jsonPath("$.status").value("AWAITING_REQUEST"));
+		assertThat(FakeServer.countRequests(catedraContainer, "POST", "/api/appointments/process-" + holdId + "/cancel"))
+				.isZero();
+	}
+
+	// HU-09, criterio 5: sin respuesta de la cátedra, la reserva no cambia.
+	@Test
+	void whenTheCatedraDoesNotAnswerTheReservationStaysConfirmed() throws Exception {
+		String token = newUserToken();
+		String holdId = stubHoldAndConfirmation();
+		String id = JsonPath.read(startReservation(token, 204, NEXT_MONDAY, "11:20")
+				.andExpect(status().isCreated())
+				.andReturn().getResponse().getContentAsString(), "$.id");
+		confirm(id);
+		FakeServer.stub(catedraContainer,
+				FakeCatedra.postMapping("/api/appointments/process-" + holdId + "/cancel", 503, "").toString());
+
+		cancelReservation(token, id, null)
+				.andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.code").value("INTEGRATION_UNAVAILABLE"));
+		getReservation(token, id).andExpect(jsonPath("$.status").value("CONFIRMED"));
+	}
+
 	@Test
 	void rejectsRequestsWithoutToken() throws Exception {
 		mockMvc.perform(post("/api/reservations").contentType(MediaType.APPLICATION_JSON)
 						.content(reservationBody(204, NEXT_MONDAY, "11:20")))
 				.andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/reservations/" + UUID.randomUUID()))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(post("/api/reservations/" + UUID.randomUUID() + "/cancel"))
 				.andExpect(status().isUnauthorized());
 		assertThat(FakeServer.countRequests(catedraContainer, "POST", HOLDS_PATH)).isZero();
 	}
@@ -195,6 +267,21 @@ class ReservationFlowTest {
 				.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(reservationBody(professionalId, date, startTime)));
+	}
+
+	// La confirmación llega por Kafka (ReservationEventFlowTest); acá solo interesa lo que pasa después.
+	private void confirm(String id) {
+		jdbcClient.sql("UPDATE reservation_process SET status = 'CONFIRMED', confirmed_at = now() WHERE id = :id")
+				.param("id", UUID.fromString(id)).update();
+	}
+
+	private ResultActions cancelReservation(String token, String id, String body) throws Exception {
+		MockHttpServletRequestBuilder request = post("/api/reservations/" + id + "/cancel")
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+		if (body != null) {
+			request.contentType(MediaType.APPLICATION_JSON).content(body);
+		}
+		return mockMvc.perform(request);
 	}
 
 	private ResultActions getReservation(String token, String id) throws Exception {

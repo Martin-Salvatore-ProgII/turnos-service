@@ -25,7 +25,8 @@ public class ReservationEvent {
 	// Pedido de teléfono y rechazo: lo que la cátedra le dice al usuario y hasta cuándo vale el proceso.
 	private String message;
 	private Instant expiresAt;
-	// Rechazo, vencimiento e invalidez: el motivo que informa la cátedra.
+	// Rechazo, vencimiento, invalidez y cancelación: el motivo que informa la cátedra (en la cancelación
+	// puede faltar).
 	private String reason;
 	// Confirmación: el identificador de la reserva en la cátedra.
 	private Long reservationId;

@@ -9,6 +9,8 @@ import java.util.UUID;
 
 import com.example.turnos.reservation.application.exception.ReservationException;
 import com.example.turnos.reservation.application.exception.ReservationProcessConflictException;
+import com.example.turnos.reservation.domain.model.PageQuery;
+import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.domain.ports.out.ReservationProcessRepository;
@@ -19,6 +21,9 @@ import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -54,6 +59,23 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
 	public Optional<ReservationProcess> findByIdAndUserId(UUID id, Long userId) {
 		return jpaReservationProcessRepository.findByIdAndUserId(id, userId)
 				.map(reservationProcessMapper::toDomainModel);
+	}
+
+	// Del más reciente al más antiguo (contratos.md). El id desempata dos procesos creados en el mismo
+	// instante: sin un orden total, un proceso podría repetirse en dos páginas o no salir en ninguna.
+	@Override
+	public PageResult<ReservationProcess> findByUserId(Long userId, ReservationStatus status, PageQuery page) {
+		PageRequest pageRequest = PageRequest.of(page.getPage(), page.getSize(),
+				Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+		Page<ReservationProcessEntity> result = status == null
+				? jpaReservationProcessRepository.findByUserId(userId, pageRequest)
+				: jpaReservationProcessRepository.findByUserIdAndStatus(userId, status, pageRequest);
+		return PageResult.<ReservationProcess>builder()
+				.content(result.getContent().stream().map(reservationProcessMapper::toDomainModel).toList())
+				.totalElements(result.getTotalElements())
+				.page(page.getPage())
+				.size(page.getSize())
+				.build();
 	}
 
 	@Override

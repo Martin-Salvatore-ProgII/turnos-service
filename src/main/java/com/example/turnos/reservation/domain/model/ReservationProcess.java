@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
 
+import com.example.turnos.availability.domain.model.AgendaZone;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -21,6 +22,11 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReservationProcess {
+
+	// cancelledBy de una cancelación que no pidió nadie de este servicio: la informó la cátedra, por
+	// AppointmentCancelled o en la reconciliación (arq/modelo-db.md).
+	public static final String CANCELLED_BY_CATEDRA = "CATEDRA";
+
 	private UUID id;
 	// Dueño del proceso. Toda consulta o cambio se filtra por él (arq/seguridad.md).
 	private Long userId;
@@ -59,6 +65,12 @@ public class ReservationProcess {
 		}
 		status = trigger.getTarget();
 		return true;
+	}
+
+	// Si el turno ya empezó en ese instante, con la hora del negocio (ADR-0016). Es el mismo criterio que
+	// descarta un slot de hoy al reservar; al cancelar, un turno que ya empezó no se cancela (ADR-0071).
+	public boolean appointmentHasStarted(Instant now) {
+		return !appointmentDate.atTime(startTime).atZone(AgendaZone.ZONE).toInstant().isAfter(now);
 	}
 
 }

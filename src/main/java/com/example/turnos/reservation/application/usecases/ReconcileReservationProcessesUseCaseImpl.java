@@ -40,7 +40,6 @@ public class ReconcileReservationProcessesUseCaseImpl implements ReconcileReserv
 	static final String HOLD_EXPIRED = "HOLD_EXPIRED";
 	static final String CATEDRA_REPORTED_FAILED = "CATEDRA_REPORTED_FAILED";
 	static final String HOLD_NOT_REGISTERED = "INTEGRATION_UNAVAILABLE";
-	static final String CANCELLED_BY_CATEDRA = "CATEDRA";
 
 	private static final EnumSet<ReservationStatus> WAITING_WITHOUT_PHONE = EnumSet.of(ReservationStatus.HELD,
 			ReservationStatus.AWAITING_REQUEST, ReservationStatus.AWAITING_PHONE);
@@ -138,7 +137,7 @@ public class ReconcileReservationProcessesUseCaseImpl implements ReconcileReserv
 		return change(process, ReservationTrigger.APPOINTMENT_CANCELLED, p -> {
 			p.setCancelledAt(appointment.getCancelledAt() != null ? appointment.getCancelledAt() : clock.instant());
 			p.setCancellationReason(appointment.getCancellationReason());
-			p.setCancelledBy(CANCELLED_BY_CATEDRA);
+			p.setCancelledBy(ReservationProcess.CANCELLED_BY_CATEDRA);
 		});
 	}
 
