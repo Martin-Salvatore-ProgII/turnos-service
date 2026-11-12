@@ -63,8 +63,8 @@ public class ReservationProcessEntity {
 	private Instant confirmedAt;
 	private Instant cancelledAt;
 	// Bloqueo optimista (ADR-0068): Hibernate guarda con "WHERE version = <la leída>" y la aumenta.
-	// Si otro cambio la aumentó antes, no guarda nada y lanza una excepción. Que sea null indica
-	// además que el proceso es nuevo.
+	// Si otro cambio la aumentó antes, no guarda nada y lanza una excepción.
+	// version=null indica que el proceso es nuevo.
 	@Version
 	private Long version;
 }

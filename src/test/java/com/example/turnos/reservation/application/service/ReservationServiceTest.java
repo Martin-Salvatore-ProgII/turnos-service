@@ -15,10 +15,15 @@ import com.example.turnos.reservation.application.exception.ReservationException
 import com.example.turnos.reservation.domain.model.PageQuery;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
+import com.example.turnos.reservation.domain.model.ReservationWithOwner;
+import com.example.turnos.reservation.domain.ports.in.CancelAnyReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.CancelReservationUseCase;
+import com.example.turnos.reservation.domain.ports.in.GetAnyReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
+import com.example.turnos.reservation.domain.ports.in.ListAllReservationsUseCase;
 import com.example.turnos.reservation.domain.ports.in.ListReservationsUseCase;
 import com.example.turnos.reservation.domain.ports.in.PurgeProcessedEventsUseCase;
 import com.example.turnos.reservation.domain.ports.in.ReconcileReservationProcessesUseCase;
@@ -39,9 +44,12 @@ class ReservationServiceTest {
 	private final CancelReservationUseCase cancelReservationUseCase = mock(CancelReservationUseCase.class);
 	private final ReconcileReservationProcessesUseCase reconcileUseCase = mock(ReconcileReservationProcessesUseCase.class);
 	private final PurgeProcessedEventsUseCase purgeUseCase = mock(PurgeProcessedEventsUseCase.class);
+	private final ListAllReservationsUseCase listAllReservationsUseCase = mock(ListAllReservationsUseCase.class);
+	private final GetAnyReservationUseCase getAnyReservationUseCase = mock(GetAnyReservationUseCase.class);
+	private final CancelAnyReservationUseCase cancelAnyReservationUseCase = mock(CancelAnyReservationUseCase.class);
 	private final ReservationService service = new ReservationService(startReservationUseCase, getReservationUseCase,
-			listReservationsUseCase, handleReservationEventUseCase, submitPhoneUseCase, cancelReservationUseCase, reconcileUseCase,
-			purgeUseCase);
+			listReservationsUseCase, listAllReservationsUseCase, getAnyReservationUseCase, handleReservationEventUseCase,
+			submitPhoneUseCase, cancelReservationUseCase, cancelAnyReservationUseCase, reconcileUseCase, purgeUseCase);
 
 	@Test
 	void startReservationDelegatesToItsUseCase() {
@@ -77,6 +85,41 @@ class ReservationServiceTest {
 		when(listReservationsUseCase.listReservations("juan", ReservationStatus.CONFIRMED, page)).thenReturn(result);
 
 		assertThat(service.listReservations("juan", ReservationStatus.CONFIRMED, page)).isSameAs(result);
+	}
+
+	@Test
+	void getAnyReservationReturnsTheReservationOfItsUseCase() {
+		ReservationWithOwner reservation = ReservationWithOwner.builder().build();
+		when(getAnyReservationUseCase.getAnyReservation(ID)).thenReturn(Optional.of(reservation));
+
+		assertThat(service.getAnyReservation(ID)).isSameAs(reservation);
+	}
+
+	@Test
+	void aMissingReservationForTheAdministratorIsReservationNotFound() {
+		when(getAnyReservationUseCase.getAnyReservation(ID)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.getAnyReservation(ID))
+				.isInstanceOf(ReservationException.class)
+				.extracting("code").isEqualTo(ReservationException.Code.RESERVATION_NOT_FOUND);
+	}
+
+	@Test
+	void cancelAnyReservationReturnsTheReservationOfItsUseCase() {
+		ReservationWithOwner reservation = ReservationWithOwner.builder().build();
+		when(cancelAnyReservationUseCase.cancelAnyReservation("admin", ID, "Pedido por soporte")).thenReturn(reservation);
+
+		assertThat(service.cancelAnyReservation("admin", ID, "Pedido por soporte")).isSameAs(reservation);
+	}
+
+	@Test
+	void listAllReservationsReturnsThePageOfItsUseCase() {
+		ReservationSearchCriteria criteria = ReservationSearchCriteria.builder().ownerLogin("juan").build();
+		PageQuery page = PageQuery.builder().page(0).size(20).build();
+		PageResult<ReservationWithOwner> result = PageResult.<ReservationWithOwner>builder().content(List.of()).build();
+		when(listAllReservationsUseCase.listAllReservations(criteria, page)).thenReturn(result);
+
+		assertThat(service.listAllReservations(criteria, page)).isSameAs(result);
 	}
 
 	@Test

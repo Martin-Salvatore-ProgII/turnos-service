@@ -41,7 +41,7 @@ public class ReservationProcess {
 	private String holdId;
 	private String reservationProcessId;
 	private Long reservationId;
-	// Vencimiento que informa la cátedra. Guardarlo no extiende el hold (REF §9).
+	// Copia local del vencimiento que informa la cátedra. Guardarlo no extiende el hold (REF 9).
 	private Instant expiresAt;
 	private String requestEventId;
 	private String submittedEventId;
@@ -53,8 +53,8 @@ public class ReservationProcess {
 	private Instant updatedAt;
 	private Instant confirmedAt;
 	private Instant cancelledAt;
-	// La versión leída de la base. Viaja con el proceso para que un cambio hecho sobre una lectura
-	// vieja no se guarde (ADR-0068). La asigna la persistencia; el dominio no la modifica.
+	// La versión leída de la DB. Viaja con el proceso para que un cambio hecho sobre una lectura
+	// vieja no se guarde (ADR-0068). Cada UPDATE del estado aumenta version en 1
 	private Long version;
 
 	// Aplica la regla de docs/arq/maquina-estados.md: si el disparador no tiene transición desde el
@@ -67,7 +67,7 @@ public class ReservationProcess {
 		return true;
 	}
 
-	// Si el turno ya empezó en ese instante, con la hora del negocio (ADR-0016). Es el mismo criterio que
+	// Evalua si el turno ya empezó en ese instante, con la hora del negocio (ADR-0016). Es el mismo criterio que
 	// descarta un slot de hoy al reservar; al cancelar, un turno que ya empezó no se cancela (ADR-0071).
 	public boolean appointmentHasStarted(Instant now) {
 		return !appointmentDate.atTime(startTime).atZone(AgendaZone.ZONE).toInstant().isAfter(now);

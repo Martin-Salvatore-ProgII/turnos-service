@@ -11,10 +11,15 @@ import com.example.turnos.reservation.domain.model.PageQuery;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationEvent;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
+import com.example.turnos.reservation.domain.model.ReservationWithOwner;
+import com.example.turnos.reservation.domain.ports.in.CancelAnyReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.CancelReservationUseCase;
+import com.example.turnos.reservation.domain.ports.in.GetAnyReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
+import com.example.turnos.reservation.domain.ports.in.ListAllReservationsUseCase;
 import com.example.turnos.reservation.domain.ports.in.ListReservationsUseCase;
 import com.example.turnos.reservation.domain.ports.in.PurgeProcessedEventsUseCase;
 import com.example.turnos.reservation.domain.ports.in.ReconcileReservationProcessesUseCase;
@@ -30,9 +35,12 @@ public class ReservationService {
 	private final StartReservationUseCase startReservationUseCase;
 	private final GetReservationUseCase getReservationUseCase;
 	private final ListReservationsUseCase listReservationsUseCase;
+	private final ListAllReservationsUseCase listAllReservationsUseCase;
+	private final GetAnyReservationUseCase getAnyReservationUseCase;
 	private final HandleReservationEventUseCase handleReservationEventUseCase;
 	private final SubmitPhoneUseCase submitPhoneUseCase;
 	private final CancelReservationUseCase cancelReservationUseCase;
+	private final CancelAnyReservationUseCase cancelAnyReservationUseCase;
 	private final ReconcileReservationProcessesUseCase reconcileReservationProcessesUseCase;
 	private final PurgeProcessedEventsUseCase purgeProcessedEventsUseCase;
 
@@ -54,6 +62,19 @@ public class ReservationService {
 		return listReservationsUseCase.listReservations(login, status, page);
 	}
 
+	// Operación del administrador (ADR-0037). Sin rechazos propios: un filtro sin resultados es una
+	// página vacía.
+	public PageResult<ReservationWithOwner> listAllReservations(ReservationSearchCriteria criteria, PageQuery page) {
+		return listAllReservationsUseCase.listAllReservations(criteria, page);
+	}
+
+	// Operación del administrador (ADR-0037). Un solo motivo de rechazo: no existe.
+	public ReservationWithOwner getAnyReservation(UUID id) {
+		return getAnyReservationUseCase.getAnyReservation(id)
+				.orElseThrow(() -> new ReservationException(ReservationException.Code.RESERVATION_NOT_FOUND,
+						"Could not find reservation with id: " + id));
+	}
+
 	// Como iniciar: el caso de uso informa cada rechazo con su código (ADR-0059).
 	public ReservationProcess submitPhone(String login, UUID id, String phoneNumber) {
 		return submitPhoneUseCase.submitPhone(login, id, phoneNumber);
@@ -62,6 +83,12 @@ public class ReservationService {
 	// Como iniciar: el caso de uso informa cada rechazo con su código (ADR-0059).
 	public ReservationProcess cancelReservation(String login, UUID id, String reason) {
 		return cancelReservationUseCase.cancelReservation(login, id, reason);
+	}
+
+	// Operación del administrador (ADR-0037). Como la del dueño, el caso de uso informa cada rechazo con
+	// su código (ADR-0059).
+	public ReservationWithOwner cancelAnyReservation(String adminLogin, UUID id, String reason) {
+		return cancelAnyReservationUseCase.cancelAnyReservation(adminLogin, id, reason);
 	}
 
 	// Las dos las llama el scheduler de la reconciliación (ADR-0030).
