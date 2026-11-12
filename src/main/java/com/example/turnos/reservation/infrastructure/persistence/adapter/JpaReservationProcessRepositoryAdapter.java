@@ -36,7 +36,7 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
 	private final JpaReservationProcessRepository jpaReservationProcessRepository;
 	private final ReservationProcessMapper reservationProcessMapper;
 
-	// saveAndFlush y no save: el proceso tiene que quedar en la base antes de llamar a la cátedra
+	// saveAndFlush ejecuta el UPDATE al instante: el proceso tiene que quedar en la base antes de llamar a la cátedra
 	// (ADR-0022), y así un error de la base aparece acá y no más tarde.
 	// El rechazo del índice de un proceso activo se traduce al error funcional, igual que si lo hubiera
 	// detectado la consulta previa (ADR-0070). Cualquier otra violación sigue de largo: es un error interno.
@@ -126,7 +126,8 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
 		try {
 			ReservationProcessEntity updatedEntity = jpaReservationProcessRepository.saveAndFlush(entity);
 			return Optional.of(reservationProcessMapper.toDomainModel(updatedEntity));
-		} catch (OptimisticLockingFailureException e) {
+// traduce OptimisticLockingFailureException a ReservationProcessConflictException para que salte una excepcion de application 
+		} catch (OptimisticLockingFailureException e) { 
 			throw new ReservationProcessConflictException(id);
 		}
 	}
