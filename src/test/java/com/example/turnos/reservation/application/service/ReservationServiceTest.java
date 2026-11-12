@@ -15,10 +15,13 @@ import com.example.turnos.reservation.application.exception.ReservationException
 import com.example.turnos.reservation.domain.model.PageQuery;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
+import com.example.turnos.reservation.domain.model.ReservationWithOwner;
 import com.example.turnos.reservation.domain.ports.in.CancelReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
+import com.example.turnos.reservation.domain.ports.in.ListAllReservationsUseCase;
 import com.example.turnos.reservation.domain.ports.in.ListReservationsUseCase;
 import com.example.turnos.reservation.domain.ports.in.PurgeProcessedEventsUseCase;
 import com.example.turnos.reservation.domain.ports.in.ReconcileReservationProcessesUseCase;
@@ -39,8 +42,9 @@ class ReservationServiceTest {
 	private final CancelReservationUseCase cancelReservationUseCase = mock(CancelReservationUseCase.class);
 	private final ReconcileReservationProcessesUseCase reconcileUseCase = mock(ReconcileReservationProcessesUseCase.class);
 	private final PurgeProcessedEventsUseCase purgeUseCase = mock(PurgeProcessedEventsUseCase.class);
+	private final ListAllReservationsUseCase listAllReservationsUseCase = mock(ListAllReservationsUseCase.class);
 	private final ReservationService service = new ReservationService(startReservationUseCase, getReservationUseCase,
-			listReservationsUseCase, handleReservationEventUseCase, submitPhoneUseCase, cancelReservationUseCase, reconcileUseCase,
+			listReservationsUseCase, listAllReservationsUseCase, handleReservationEventUseCase, submitPhoneUseCase, cancelReservationUseCase, reconcileUseCase,
 			purgeUseCase);
 
 	@Test
@@ -77,6 +81,16 @@ class ReservationServiceTest {
 		when(listReservationsUseCase.listReservations("juan", ReservationStatus.CONFIRMED, page)).thenReturn(result);
 
 		assertThat(service.listReservations("juan", ReservationStatus.CONFIRMED, page)).isSameAs(result);
+	}
+
+	@Test
+	void listAllReservationsReturnsThePageOfItsUseCase() {
+		ReservationSearchCriteria criteria = ReservationSearchCriteria.builder().ownerLogin("juan").build();
+		PageQuery page = PageQuery.builder().page(0).size(20).build();
+		PageResult<ReservationWithOwner> result = PageResult.<ReservationWithOwner>builder().content(List.of()).build();
+		when(listAllReservationsUseCase.listAllReservations(criteria, page)).thenReturn(result);
+
+		assertThat(service.listAllReservations(criteria, page)).isSameAs(result);
 	}
 
 	@Test
