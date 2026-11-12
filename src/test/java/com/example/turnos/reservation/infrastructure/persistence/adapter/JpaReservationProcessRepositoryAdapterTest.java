@@ -16,6 +16,7 @@ import com.example.turnos.reservation.application.exception.ReservationProcessCo
 import com.example.turnos.reservation.domain.model.PageQuery;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.infrastructure.persistence.entity.ReservationProcessEntity;
 import com.example.turnos.reservation.infrastructure.persistence.mapper.ReservationProcessMapper;
@@ -348,6 +349,106 @@ class JpaReservationProcessRepositoryAdapterTest {
 
 		assertThat(found.getContent()).isEmpty();
 		assertThat(found.getTotalElements()).isZero();
+	}
+
+	@Test
+	void searchWithoutFiltersReturnsTheProcessesOfEveryUserFromTheNewestOn() {
+		ReservationProcess juans = createdAt(adapter.create(finishedProcess()), "2026-11-01T10:00:00Z");
+		userId = insertUser("ana");
+		ReservationProcess anas = createdAt(adapter.create(finishedProcess()), "2026-11-02T10:00:00Z");
+		entityManager.flush();
+		entityManager.clear();
+
+		PageResult<ReservationProcess> found = adapter.search(ReservationSearchCriteria.builder().build(), page(0, 20));
+
+		assertThat(found.getContent()).extracting(ReservationProcess::getId).containsExactly(anas.getId(), juans.getId());
+		assertThat(found.getTotalElements()).isEqualTo(2);
+	}
+
+	@Test
+	void searchFiltersByOwner() {
+		ReservationProcess juans = adapter.create(finishedProcess());
+		Long juanId = userId;
+		userId = insertUser("ana");
+		adapter.create(finishedProcess());
+		entityManager.flush();
+		entityManager.clear();
+
+		PageResult<ReservationProcess> found =
+				adapter.search(ReservationSearchCriteria.builder().ownerId(juanId).build(), page(0, 20));
+
+		assertThat(found.getContent()).extracting(ReservationProcess::getId).containsExactly(juans.getId());
+	}
+
+	@Test
+	void searchFiltersByStatus() {
+		ReservationProcess confirmed = adapter.create(withStatus(ReservationStatus.CONFIRMED, null));
+		adapter.create(finishedProcess());
+		entityManager.flush();
+		entityManager.clear();
+
+		PageResult<ReservationProcess> found = adapter.search(
+				ReservationSearchCriteria.builder().status(ReservationStatus.CONFIRMED).build(), page(0, 20));
+
+		assertThat(found.getContent()).extracting(ReservationProcess::getId).containsExactly(confirmed.getId());
+	}
+
+	// Los dos extremos del rango van incluidos, y puede venir uno solo.
+	@Test
+	void searchFiltersByTheDateOfTheAppointmentIncludingBothEnds() {
+		ReservationProcess before = adapter.create(onDate("2026-11-09"));
+		ReservationProcess first = adapter.create(onDate("2026-11-10"));
+		ReservationProcess last = adapter.create(onDate("2026-11-20"));
+		ReservationProcess after = adapter.create(onDate("2026-11-21"));
+		entityManager.flush();
+		entityManager.clear();
+
+		LocalDate from = LocalDate.parse("2026-11-10");
+		LocalDate to = LocalDate.parse("2026-11-20");
+		assertThat(adapter.search(ReservationSearchCriteria.builder().from(from).to(to).build(), page(0, 20)).getContent())
+				.extracting(ReservationProcess::getId).containsExactlyInAnyOrder(first.getId(), last.getId());
+		assertThat(adapter.search(ReservationSearchCriteria.builder().from(from).build(), page(0, 20)).getContent())
+				.extracting(ReservationProcess::getId).containsExactlyInAnyOrder(first.getId(), last.getId(), after.getId());
+		assertThat(adapter.search(ReservationSearchCriteria.builder().to(to).build(), page(0, 20)).getContent())
+				.extracting(ReservationProcess::getId).containsExactlyInAnyOrder(before.getId(), first.getId(), last.getId());
+	}
+
+	@Test
+	void searchCombinesTheFiltersAndCountsAllThatMatch() {
+		ReservationProcess match1 = createdAt(adapter.create(confirmedOn("2026-11-10")), "2026-11-01T10:00:00Z");
+		ReservationProcess match2 = createdAt(adapter.create(confirmedOn("2026-11-12")), "2026-11-02T10:00:00Z");
+		adapter.create(onDate("2026-11-10"));
+		adapter.create(confirmedOn("2026-12-01"));
+		Long juanId = userId;
+		userId = insertUser("ana");
+		adapter.create(confirmedOn("2026-11-10"));
+		entityManager.flush();
+		entityManager.clear();
+
+		ReservationSearchCriteria criteria = ReservationSearchCriteria.builder()
+				.ownerId(juanId)
+				.status(ReservationStatus.CONFIRMED)
+				.from(LocalDate.parse("2026-11-01"))
+				.to(LocalDate.parse("2026-11-30"))
+				.build();
+		PageResult<ReservationProcess> firstPage = adapter.search(criteria, page(0, 1));
+		PageResult<ReservationProcess> secondPage = adapter.search(criteria, page(1, 1));
+
+		assertThat(firstPage.getContent()).extracting(ReservationProcess::getId).containsExactly(match2.getId());
+		assertThat(secondPage.getContent()).extracting(ReservationProcess::getId).containsExactly(match1.getId());
+		assertThat(firstPage.getTotalElements()).isEqualTo(2);
+	}
+
+	private ReservationProcess onDate(String date) {
+		ReservationProcess process = finishedProcess();
+		process.setAppointmentDate(LocalDate.parse(date));
+		return process;
+	}
+
+	private ReservationProcess confirmedOn(String date) {
+		ReservationProcess process = onDate(date);
+		process.setStatus(ReservationStatus.CONFIRMED);
+		return process;
 	}
 
 	// La fecha de creación la pone la auditoría con la hora actual; para probar el orden sin depender de

@@ -6,7 +6,7 @@ Es uno de los tres repositorios de la entrega, junto con `catalogo-service` y `a
 
 ## Estado
 
-Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Al arrancar obtiene de la cátedra la configuración de la integración; sin ella no arranca. Disponibilidad de turnos de un profesional para una fecha (`GET /api/availability?professionalId=&date=`), armada con su agenda vigente (pedida al catálogo reenviando el JWT del usuario) y las ocupaciones de la cátedra. Inicio de una reserva (`POST /api/reservations`, con el profesional, la fecha y la hora): valida el turno con la agenda vigente, crea el hold en la cátedra y lo confirma, y responde la reserva en el estado en que quedó. Consulta de una reserva propia (`GET /api/reservations/{id}`), la que la app repite mientras el proceso avanza; la de otro usuario responde 404. Reserva por Kafka: el servicio consume el topic de acciones de la cátedra (pedido de teléfono, rechazo y eventos finales), recibe el teléfono por `POST /api/reservations/{id}/phone` y lo publica en el topic de teléfono, y una reconciliación periódica cierra los procesos que quedaron colgados. Listado de las reservas propias (`GET /api/reservations`, paginado de la más reciente a la más antigua y con filtro opcional por estado), respondido desde la base local aunque la cátedra o el catálogo no estén. Cancelación de una reserva propia confirmada (`POST /api/reservations/{id}/cancel`, con un motivo opcional): con el `200` de la cátedra queda cancelada, cancelar una ya cancelada responde éxito sin cambios, y un turno que ya empezó no se cancela (ADR-0071). El evento `AppointmentCancelled` también cancela una reserva confirmada. La reserva de otro usuario responde 404 en todas las operaciones.
+Registro e inicio de sesión de usuarios finales (`POST /api/register` y `POST /api/authenticate`), sobre el esqueleto del servicio. Todo lo demás exige un JWT de usuario válido, y las rutas `/api/admin/**` exigen además `ROLE_ADMIN`. Al arrancar obtiene de la cátedra la configuración de la integración; sin ella no arranca. Disponibilidad de turnos de un profesional para una fecha (`GET /api/availability?professionalId=&date=`), armada con su agenda vigente (pedida al catálogo reenviando el JWT del usuario) y las ocupaciones de la cátedra. Inicio de una reserva (`POST /api/reservations`, con el profesional, la fecha y la hora): valida el turno con la agenda vigente, crea el hold en la cátedra y lo confirma, y responde la reserva en el estado en que quedó. Consulta de una reserva propia (`GET /api/reservations/{id}`), la que la app repite mientras el proceso avanza; la de otro usuario responde 404. Reserva por Kafka: el servicio consume el topic de acciones de la cátedra (pedido de teléfono, rechazo y eventos finales), recibe el teléfono por `POST /api/reservations/{id}/phone` y lo publica en el topic de teléfono, y una reconciliación periódica cierra los procesos que quedaron colgados. Listado de las reservas propias (`GET /api/reservations`, paginado de la más reciente a la más antigua y con filtro opcional por estado), respondido desde la base local aunque la cátedra o el catálogo no estén. Cancelación de una reserva propia confirmada (`POST /api/reservations/{id}/cancel`, con un motivo opcional): con el `200` de la cátedra queda cancelada, cancelar una ya cancelada responde éxito sin cambios, y un turno que ya empezó no se cancela (ADR-0071). El evento `AppointmentCancelled` también cancela una reserva confirmada. La reserva de otro usuario responde 404 en todas las operaciones. El administrador lista las reservas de todos los usuarios (`GET /api/admin/reservations`, paginado, con filtros opcionales por login del dueño, estado y rango de fechas del turno), con el dueño, el `reservationProcessId` y quién la canceló, ve el detalle de cualquiera (`GET /api/admin/reservations/{id}`) y cancela una confirmada en nombre de su dueño (`POST /api/admin/reservations/{id}/cancel`, con motivo obligatorio y las mismas reglas que la cancelación del dueño); queda registrado qué administrador la canceló.
 
 ## Requisitos
 
@@ -94,6 +94,18 @@ Docker Compose monta esa carpeta en el contenedor en solo lectura. Sin ese archi
 
 La clave pública no se guarda aparte: el servicio la calcula a partir de la privada. Cambiar la clave invalida todos los tokens ya emitidos.
 
+### HTTPS
+
+En Docker Compose los dos servicios exponen su API solo por HTTPS, en los mismos puertos (ADR-0035), con un certificado autofirmado que comparten. Turnos también llama al catálogo por HTTPS dentro de la red de Compose, confiando solo en ese certificado y verificando el nombre del host. El certificado se genera una sola vez, antes del primer arranque:
+
+```
+./generar-certificado.sh
+```
+
+Deja `tls.crt` y `tls.key` en `secrets/` de este repo y de `../catalogo-service`, fuera de Git. Vale para `localhost`, `127.0.0.1`, `10.0.2.2` (la máquina vista desde el emulador de Android) y los nombres de los contenedores. La app, o cualquier cliente, tiene que confiar en `secrets/tls.crt`. Con `--forzar` lo reemplaza; después de eso, la app tiene que volver a confiar en el nuevo.
+
+HTTPS se activa con el perfil `tls`, que el Compose prende siempre. Sin el perfil (las pruebas y `./gradlew bootTestRun`) el servicio queda en HTTP.
+
 ### Administrador
 
 El administrador no se registra desde la app: lo crea el propio servicio al arrancar, con las credenciales indicadas en `TURNOS_ADMIN_LOGIN`, `TURNOS_ADMIN_PASSWORD` y `TURNOS_ADMIN_EMAIL`. No hay credenciales de administrador en el repositorio. Después inicia sesión como cualquier usuario, y además de `ROLE_ADMIN` tiene `ROLE_USER`.
@@ -117,11 +129,11 @@ Construye las dos imágenes y levanta cuatro contenedores: `turnos-service` con 
 Para verificar que los dos servicios están en pie:
 
 ```
-curl http://localhost:8080/actuator/health
-curl http://localhost:8081/actuator/health
+curl --cacert secrets/tls.crt https://localhost:8080/actuator/health
+curl --cacert secrets/tls.crt https://localhost:8081/actuator/health
 ```
 
-Cada uno tiene que responder `{"status":"UP"}` (con el detalle de los grupos de salud).
+Cada uno tiene que responder `{"status":"UP"}` (con el detalle de los grupos de salud). Hace falta haber generado el certificado (ver [HTTPS](#https)).
 
 Para detenerlo:
 
@@ -183,7 +195,7 @@ Lo que sirve a más de una feature se lleva a `shared` en cuanto aparece el segu
 | `rest/RemoteCommandRetry` | El reintento de las operaciones con efectos seguras de repetir: hasta 2 reintentos con espera creciente (ADR-0029), configurables. También repite una falla pasajera que no es HTTP (`TransientRemoteFailureException`) | `reservation` (confirmación inicial, publicación del teléfono y cancelación) |
 | `rest/CatedraReadExecutor` | Lectura a la cátedra: el reintento de `RemoteReadRetry` y los errores propios de la cátedra | Integración al arrancar, `availability` (ocupaciones), `reservation` (reservas de la cátedra) |
 | `rest/ProblemDto` | Lee el `code` de un error `problem+json` del catálogo o de la cátedra | `catalog`, `reservation` (holds y cancelación) |
-| `rest/NoRetryRequestFactory` | La conexión HTTP de los clientes de la cátedra y del catálogo: timeouts configurados y sin reintentos propios (ADR-0029) | `CatedraRestClientConfig`, `CatalogRestClientConfig` |
+| `rest/NoRetryRequestFactory` | La conexión HTTP de los clientes de la cátedra y del catálogo: timeouts configurados y sin reintentos propios (ADR-0029). Con un `SSLContext`, confía solo en ese certificado y verifica el host (ADR-0035) | `CatedraRestClientConfig`, `CatalogRestClientConfig` |
 | `rest/HttpTimeouts` | Distingue el timeout de respuesta (la operación pudo hacerse) del de conexión (nunca salió) | `reservation` (holds) |
 | `config/CatalogRestClientConfig` | Cliente HTTP del catálogo, con los timeouts y el JWT del usuario reenviado (ADR-0034) | `catalog` |
 | `config/CatedraIntegrationConfig` | Pide la integración al arrancar; sin ella, el servicio no arranca (ADR-0005) | `config/KafkaConfig` |

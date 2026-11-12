@@ -48,8 +48,10 @@ class CancelReservationUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new CancelReservationUseCaseImpl(userRepository, reservationProcessRepository, appointmentPort,
-				Clock.fixed(NOW, ZoneOffset.UTC));
+		// Con el ReservationCanceller real: acá se prueban las reglas de la cancelación, que son las mismas
+		// para el administrador (CancelAnyReservationUseCaseImplTest prueba solo lo propio de él).
+		useCase = new CancelReservationUseCaseImpl(userRepository, reservationProcessRepository,
+				new ReservationCanceller(reservationProcessRepository, appointmentPort, Clock.fixed(NOW, ZoneOffset.UTC)));
 		when(userRepository.findByLogin("juan")).thenReturn(Optional.of(User.builder().id(7L).login("juan").build()));
 		when(reservationProcessRepository.update(any(), any()))
 				.thenAnswer(invocation -> Optional.of(invocation.getArgument(1)));
