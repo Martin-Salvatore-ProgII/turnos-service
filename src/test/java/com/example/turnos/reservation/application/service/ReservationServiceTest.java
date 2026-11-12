@@ -19,6 +19,7 @@ import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.domain.model.ReservationWithOwner;
 import com.example.turnos.reservation.domain.ports.in.CancelReservationUseCase;
+import com.example.turnos.reservation.domain.ports.in.GetAnyReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
 import com.example.turnos.reservation.domain.ports.in.ListAllReservationsUseCase;
@@ -43,8 +44,9 @@ class ReservationServiceTest {
 	private final ReconcileReservationProcessesUseCase reconcileUseCase = mock(ReconcileReservationProcessesUseCase.class);
 	private final PurgeProcessedEventsUseCase purgeUseCase = mock(PurgeProcessedEventsUseCase.class);
 	private final ListAllReservationsUseCase listAllReservationsUseCase = mock(ListAllReservationsUseCase.class);
+	private final GetAnyReservationUseCase getAnyReservationUseCase = mock(GetAnyReservationUseCase.class);
 	private final ReservationService service = new ReservationService(startReservationUseCase, getReservationUseCase,
-			listReservationsUseCase, listAllReservationsUseCase, handleReservationEventUseCase, submitPhoneUseCase, cancelReservationUseCase, reconcileUseCase,
+			listReservationsUseCase, listAllReservationsUseCase, getAnyReservationUseCase, handleReservationEventUseCase, submitPhoneUseCase, cancelReservationUseCase, reconcileUseCase,
 			purgeUseCase);
 
 	@Test
@@ -81,6 +83,23 @@ class ReservationServiceTest {
 		when(listReservationsUseCase.listReservations("juan", ReservationStatus.CONFIRMED, page)).thenReturn(result);
 
 		assertThat(service.listReservations("juan", ReservationStatus.CONFIRMED, page)).isSameAs(result);
+	}
+
+	@Test
+	void getAnyReservationReturnsTheReservationOfItsUseCase() {
+		ReservationWithOwner reservation = ReservationWithOwner.builder().build();
+		when(getAnyReservationUseCase.getAnyReservation(ID)).thenReturn(Optional.of(reservation));
+
+		assertThat(service.getAnyReservation(ID)).isSameAs(reservation);
+	}
+
+	@Test
+	void aMissingReservationForTheAdministratorIsReservationNotFound() {
+		when(getAnyReservationUseCase.getAnyReservation(ID)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.getAnyReservation(ID))
+				.isInstanceOf(ReservationException.class)
+				.extracting("code").isEqualTo(ReservationException.Code.RESERVATION_NOT_FOUND);
 	}
 
 	@Test

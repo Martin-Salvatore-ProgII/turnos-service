@@ -15,6 +15,7 @@ import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.domain.model.ReservationWithOwner;
 import com.example.turnos.reservation.domain.ports.in.CancelReservationUseCase;
+import com.example.turnos.reservation.domain.ports.in.GetAnyReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
 import com.example.turnos.reservation.domain.ports.in.ListAllReservationsUseCase;
@@ -34,6 +35,7 @@ public class ReservationService {
 	private final GetReservationUseCase getReservationUseCase;
 	private final ListReservationsUseCase listReservationsUseCase;
 	private final ListAllReservationsUseCase listAllReservationsUseCase;
+	private final GetAnyReservationUseCase getAnyReservationUseCase;
 	private final HandleReservationEventUseCase handleReservationEventUseCase;
 	private final SubmitPhoneUseCase submitPhoneUseCase;
 	private final CancelReservationUseCase cancelReservationUseCase;
@@ -62,6 +64,13 @@ public class ReservationService {
 	// página vacía.
 	public PageResult<ReservationWithOwner> listAllReservations(ReservationSearchCriteria criteria, PageQuery page) {
 		return listAllReservationsUseCase.listAllReservations(criteria, page);
+	}
+
+	// Operación del administrador (ADR-0037). Un solo motivo de rechazo: no existe.
+	public ReservationWithOwner getAnyReservation(UUID id) {
+		return getAnyReservationUseCase.getAnyReservation(id)
+				.orElseThrow(() -> new ReservationException(ReservationException.Code.RESERVATION_NOT_FOUND,
+						"Could not find reservation with id: " + id));
 	}
 
 	// Como iniciar: el caso de uso informa cada rechazo con su código (ADR-0059).
