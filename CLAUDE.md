@@ -34,7 +34,9 @@ Las pruebas necesitan Docker en ejecución (PostgreSQL real y la cátedra simula
 - **Una respuesta REST y un evento pueden cruzarse** (CU-04, 8a): `StartReservationUseCaseImpl`, `SubmitPhoneUseCaseImpl` y `CancelReservationUseCaseImpl`, ante un `ReservationProcessConflictException` al guardar, releen el proceso y solo aplican su cambio si todavía tiene transición. El evento manda; la respuesta tardía no retrocede nada.
 - **Migraciones:** `V1` con `app_user`, `authority` y `app_user_authority`; `V2` con `reservation_process`; `V3` con el índice único parcial que deja un solo proceso activo por usuario; `V4` con `processed_event`.
 
-Todavía no hay: las operaciones administrativas sobre reservas (HU-10) ni HTTPS (ADR-0035).
+- **Administración (M7, en curso):** `AdminReservationController` en `/api/admin/reservations`, dentro de la feature `reservation` y con la misma fachada; el rol lo exige `SecurityConfig` por ruta (ADR-0037). `GET` (`ListAllReservationsUseCaseImpl`) filtra con `ReservationSearchCriteria` y `ReservationProcessSpecifications` (un `Specification` por filtro, como la búsqueda del catálogo). El dueño es de la feature `user`: el login del filtro se resuelve a id y los dueños de la página se leen en una sola consulta (`UserRepository.findAllById`), sin JOIN (ADR-0064). La respuesta es la de una reserva más los datos de soporte (`AdminReservationResponse`, con `@JsonUnwrapped`).
+
+Todavía no hay: ver y cancelar como administrador (HU-10) ni HTTPS (ADR-0035).
 
 ## Lo propio de este servicio
 

@@ -12,11 +12,13 @@ import com.example.turnos.reservation.application.exception.ReservationProcessCo
 import com.example.turnos.reservation.domain.model.PageQuery;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.domain.ports.out.ReservationProcessRepository;
 import com.example.turnos.reservation.infrastructure.persistence.entity.ReservationProcessEntity;
 import com.example.turnos.reservation.infrastructure.persistence.mapper.ReservationProcessMapper;
 import com.example.turnos.reservation.infrastructure.persistence.repository.JpaReservationProcessRepository;
+import com.example.turnos.reservation.infrastructure.persistence.repository.ReservationProcessSpecifications;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,6 +26,7 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -36,7 +39,7 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
 	private final JpaReservationProcessRepository jpaReservationProcessRepository;
 	private final ReservationProcessMapper reservationProcessMapper;
 
-	// saveAndFlush y no save: el proceso tiene que quedar en la base antes de llamar a la cátedra
+	// saveAndFlush ejecuta el UPDATE al instante: el proceso tiene que quedar en la base antes de llamar a la cátedra
 	// (ADR-0022), y así un error de la base aparece acá y no más tarde.
 	// El rechazo del índice de un proceso activo se traduce al error funcional, igual que si lo hubiera
 	// detectado la consulta previa (ADR-0070). Cualquier otra violación sigue de largo: es un error interno.
@@ -65,11 +68,40 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
 	// instante: sin un orden total, un proceso podría repetirse en dos páginas o no salir en ninguna.
 	@Override
 	public PageResult<ReservationProcess> findByUserId(Long userId, ReservationStatus status, PageQuery page) {
-		PageRequest pageRequest = PageRequest.of(page.getPage(), page.getSize(),
-				Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+		PageRequest pageRequest = newestFirst(page);
 		Page<ReservationProcessEntity> result = status == null
 				? jpaReservationProcessRepository.findByUserId(userId, pageRequest)
 				: jpaReservationProcessRepository.findByUserIdAndStatus(userId, status, pageRequest);
+		return toPageResult(result, page);
+	}
+
+	// Cada filtro que vino se suma con and; sin ninguno, son todas las reservas.
+	@Override
+	public PageResult<ReservationProcess> search(ReservationSearchCriteria criteria, PageQuery page) {
+		Specification<ReservationProcessEntity> specification = Specification.unrestricted();
+		if (criteria.getOwnerId() != null) {
+			specification = specification.and(ReservationProcessSpecifications.hasOwner(criteria.getOwnerId()));
+		}
+		if (criteria.getStatus() != null) {
+			specification = specification.and(ReservationProcessSpecifications.hasStatus(criteria.getStatus()));
+		}
+		if (criteria.getFrom() != null) {
+			specification = specification.and(ReservationProcessSpecifications.appointmentFrom(criteria.getFrom()));
+		}
+		if (criteria.getTo() != null) {
+			specification = specification.and(ReservationProcessSpecifications.appointmentTo(criteria.getTo()));
+		}
+		// Spring Data hace dos consultas: la página y el total que cumple los filtros.
+		return toPageResult(jpaReservationProcessRepository.findAll(specification, newestFirst(page)), page);
+	}
+
+	// El id desempata dos procesos creados en el mismo instante, para que el orden entre páginas sea estable.
+	private static PageRequest newestFirst(PageQuery page) {
+		return PageRequest.of(page.getPage(), page.getSize(),
+				Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+	}
+
+	private PageResult<ReservationProcess> toPageResult(Page<ReservationProcessEntity> result, PageQuery page) {
 		return PageResult.<ReservationProcess>builder()
 				.content(result.getContent().stream().map(reservationProcessMapper::toDomainModel).toList())
 				.totalElements(result.getTotalElements())
@@ -126,7 +158,8 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
 		try {
 			ReservationProcessEntity updatedEntity = jpaReservationProcessRepository.saveAndFlush(entity);
 			return Optional.of(reservationProcessMapper.toDomainModel(updatedEntity));
-		} catch (OptimisticLockingFailureException e) {
+// traduce OptimisticLockingFailureException a ReservationProcessConflictException para que salte una excepcion de application 
+		} catch (OptimisticLockingFailureException e) { 
 			throw new ReservationProcessConflictException(id);
 		}
 	}

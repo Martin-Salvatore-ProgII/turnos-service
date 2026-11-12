@@ -11,10 +11,13 @@ import com.example.turnos.reservation.domain.model.PageQuery;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationEvent;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
+import com.example.turnos.reservation.domain.model.ReservationWithOwner;
 import com.example.turnos.reservation.domain.ports.in.CancelReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.HandleReservationEventUseCase;
+import com.example.turnos.reservation.domain.ports.in.ListAllReservationsUseCase;
 import com.example.turnos.reservation.domain.ports.in.ListReservationsUseCase;
 import com.example.turnos.reservation.domain.ports.in.PurgeProcessedEventsUseCase;
 import com.example.turnos.reservation.domain.ports.in.ReconcileReservationProcessesUseCase;
@@ -30,6 +33,7 @@ public class ReservationService {
 	private final StartReservationUseCase startReservationUseCase;
 	private final GetReservationUseCase getReservationUseCase;
 	private final ListReservationsUseCase listReservationsUseCase;
+	private final ListAllReservationsUseCase listAllReservationsUseCase;
 	private final HandleReservationEventUseCase handleReservationEventUseCase;
 	private final SubmitPhoneUseCase submitPhoneUseCase;
 	private final CancelReservationUseCase cancelReservationUseCase;
@@ -52,6 +56,12 @@ public class ReservationService {
 	// Sin rechazos propios: un usuario sin reservas recibe una página vacía.
 	public PageResult<ReservationProcess> listReservations(String login, ReservationStatus status, PageQuery page) {
 		return listReservationsUseCase.listReservations(login, status, page);
+	}
+
+	// Operación del administrador (ADR-0037). Sin rechazos propios: un filtro sin resultados es una
+	// página vacía.
+	public PageResult<ReservationWithOwner> listAllReservations(ReservationSearchCriteria criteria, PageQuery page) {
+		return listAllReservationsUseCase.listAllReservations(criteria, page);
 	}
 
 	// Como iniciar: el caso de uso informa cada rechazo con su código (ADR-0059).

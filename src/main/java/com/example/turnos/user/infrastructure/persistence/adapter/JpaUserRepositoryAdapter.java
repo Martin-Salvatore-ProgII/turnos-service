@@ -1,5 +1,6 @@
 package com.example.turnos.user.infrastructure.persistence.adapter;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,6 +34,13 @@ public class JpaUserRepositoryAdapter implements UserRepository {
 	@Override
 	public Optional<User> findById(Long id) {
 		return jpaUserRepository.findById(id).map(userMapper::toDomainModel);
+	}
+
+	@Override
+	public List<User> findAllById(Collection<Long> ids) {
+		return jpaUserRepository.findAllById(ids).stream()
+				.map(userMapper::toDomainModel)
+				.toList();
 	}
 
 	@Override
