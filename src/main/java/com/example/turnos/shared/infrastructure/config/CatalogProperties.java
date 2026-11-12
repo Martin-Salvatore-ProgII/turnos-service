@@ -6,8 +6,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * Conexión con el servicio de catálogo. La URL viene de la configuración externa; los timeouts
- * tienen su valor inicial en {@code application.yaml} (ADR-0029, RNF-09).
+ * tienen su valor inicial en {@code application.yaml} (ADR-0029, RNF-09). {@code sslBundle} es el
+ * nombre del bundle con el certificado en el que se confía al llamar por HTTPS (ADR-0035); sin él, se
+ * usan los certificados de confianza de la JVM.
  */
 @ConfigurationProperties("turnos.catalog")
-public record CatalogProperties(String apiUrl, Duration connectTimeout, Duration readTimeout) {
+public record CatalogProperties(String apiUrl, Duration connectTimeout, Duration readTimeout, String sslBundle) {
 }

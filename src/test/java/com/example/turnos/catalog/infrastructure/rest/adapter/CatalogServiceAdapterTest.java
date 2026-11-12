@@ -9,6 +9,8 @@ import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalTime;
 
+import javax.net.ssl.SSLContext;
+
 import com.example.turnos.FakeCatalog;
 import com.example.turnos.FakeServer;
 import com.example.turnos.catalog.application.exception.CatalogTokenRejectedException;
@@ -225,8 +227,8 @@ class CatalogServiceAdapterTest {
 
 	// Timeouts cortos para que la prueba de demora no tarde.
 	private static CatalogServiceAdapter adapter(String baseUrl) {
-		CatalogProperties properties = new CatalogProperties(baseUrl, Duration.ofSeconds(1), Duration.ofMillis(500));
-		return new CatalogServiceAdapter(new CatalogRestClientConfig().catalogRestClient(properties),
+		CatalogProperties properties = new CatalogProperties(baseUrl, Duration.ofSeconds(1), Duration.ofMillis(500), null);
+		return new CatalogServiceAdapter(new CatalogRestClientConfig().catalogRestClient(properties, (SSLContext) null),
 				new RemoteReadRetry(), new ProfessionalAgendaMapper());
 	}
 
