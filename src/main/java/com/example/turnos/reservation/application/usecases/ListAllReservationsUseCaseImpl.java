@@ -60,15 +60,7 @@ public class ListAllReservationsUseCaseImpl implements ListAllReservationsUseCas
 		}
 		List<Long> ids = processes.stream().map(ReservationProcess::getUserId).distinct().toList();
 		return userRepository.findAllById(ids).stream()
-				.collect(Collectors.toMap(User::getId, ListAllReservationsUseCaseImpl::toOwner));
-	}
-
-	private static ReservationOwner toOwner(User user) {
-		return ReservationOwner.builder()
-				.login(user.getLogin())
-				.firstName(user.getFirstName())
-				.lastName(user.getLastName())
-				.build();
+				.collect(Collectors.toMap(User::getId, ReservationOwner::of));
 	}
 
 	private static PageResult<ReservationWithOwner> emptyPage(PageQuery page) {

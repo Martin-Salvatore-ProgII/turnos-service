@@ -18,6 +18,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
+import com.example.turnos.reservation.application.exception.ReservationException;
 import com.example.turnos.reservation.application.service.ReservationService;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationOwner;
@@ -160,6 +161,39 @@ class AdminReservationControllerTest {
 		mockMvc.perform(get("/api/admin/reservations").param("size", "1000"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+		verifyNoInteractions(reservationService);
+	}
+
+	@Test
+	void showsAnyReservationWithTheSupportData() throws Exception {
+		when(reservationService.getAnyReservation(ID)).thenReturn(cancelledReservation());
+
+		mockMvc.perform(get("/api/admin/reservations/" + ID))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(ID.toString()))
+				.andExpect(jsonPath("$.status").value("CANCELLED"))
+				.andExpect(jsonPath("$.owner.login").value("juan"))
+				.andExpect(jsonPath("$.reservationProcessId").value("process-a92b47d0"))
+				.andExpect(jsonPath("$.cancelledBy").value("juan"));
+	}
+
+	@Test
+	void aMissingReservationIsNotFound() throws Exception {
+		when(reservationService.getAnyReservation(ID)).thenThrow(new ReservationException(
+				ReservationException.Code.RESERVATION_NOT_FOUND, "Could not find reservation with id: " + ID));
+
+		mockMvc.perform(get("/api/admin/reservations/" + ID))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("RESERVATION_NOT_FOUND"));
+	}
+
+	@Test
+	void anIdThatIsNotAUuidIsAValidationError() throws Exception {
+		mockMvc.perform(get("/api/admin/reservations/abc"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value("id"));
 
 		verifyNoInteractions(reservationService);
 	}
