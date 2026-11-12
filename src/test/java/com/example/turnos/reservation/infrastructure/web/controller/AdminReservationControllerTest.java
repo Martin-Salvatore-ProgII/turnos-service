@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -28,7 +29,12 @@ import com.example.turnos.reservation.domain.model.ReservationWithOwner;
 import com.example.turnos.reservation.infrastructure.web.mapper.ReservationDtoMapper;
 import com.example.turnos.shared.infrastructure.config.PaginationConfig;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -196,6 +202,60 @@ class AdminReservationControllerTest {
 				.andExpect(jsonPath("$.fieldErrors[0].field").value("id"));
 
 		verifyNoInteractions(reservationService);
+	}
+
+	@Test
+	void cancelsInTheNameOfTheAdministratorOfTheToken() throws Exception {
+		when(reservationService.cancelAnyReservation("admin", ID, "Pedido por soporte")).thenReturn(cancelledReservation());
+
+		mockMvc.perform(post("/api/admin/reservations/" + ID + "/cancel").principal(admin())
+						.contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Pedido por soporte\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("CANCELLED"))
+				.andExpect(jsonPath("$.owner.login").value("juan"))
+				.andExpect(jsonPath("$.cancelledBy").value("juan"));
+
+		verify(reservationService).cancelAnyReservation("admin", ID, "Pedido por soporte");
+	}
+
+	// HU-10, criterio 4: sin motivo se rechaza, venga sin cuerpo, sin el campo o en blanco.
+	@ParameterizedTest
+	@ValueSource(strings = { "", "{}", "{\"reason\":\"   \"}" })
+	void cancellingWithoutAReasonIsAValidationError(String body) throws Exception {
+		mockMvc.perform(post("/api/admin/reservations/" + ID + "/cancel").principal(admin())
+						.contentType(MediaType.APPLICATION_JSON).content(body))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+		verifyNoInteractions(reservationService);
+	}
+
+	@Test
+	void aReasonOverFiveHundredCharactersIsAValidationError() throws Exception {
+		mockMvc.perform(post("/api/admin/reservations/" + ID + "/cancel").principal(admin())
+						.contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"" + "a".repeat(501) + "\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value("reason"));
+
+		verifyNoInteractions(reservationService);
+	}
+
+	// Los mismos códigos que la cancelación del dueño (contratos.md).
+	@ParameterizedTest
+	@CsvSource({ "RESERVATION_NOT_FOUND, 404", "RESERVATION_NOT_CANCELLABLE, 409" })
+	void theRejectionsOfTheCancellationKeepTheirCodes(ReservationException.Code code, int httpStatus) throws Exception {
+		when(reservationService.cancelAnyReservation("admin", ID, "Pedido por soporte"))
+				.thenThrow(new ReservationException(code, "rejected"));
+
+		mockMvc.perform(post("/api/admin/reservations/" + ID + "/cancel").principal(admin())
+						.contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Pedido por soporte\"}"))
+				.andExpect(status().is(httpStatus))
+				.andExpect(jsonPath("$.code").value(code.name()));
+	}
+
+	private static TestingAuthenticationToken admin() {
+		return new TestingAuthenticationToken("admin", null, "ROLE_ADMIN");
 	}
 
 	private static PageResult<ReservationWithOwner> page(long total, ReservationWithOwner... reservations) {

@@ -18,6 +18,7 @@ import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.domain.model.ReservationWithOwner;
+import com.example.turnos.reservation.domain.ports.in.CancelAnyReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.CancelReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetAnyReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
@@ -45,9 +46,10 @@ class ReservationServiceTest {
 	private final PurgeProcessedEventsUseCase purgeUseCase = mock(PurgeProcessedEventsUseCase.class);
 	private final ListAllReservationsUseCase listAllReservationsUseCase = mock(ListAllReservationsUseCase.class);
 	private final GetAnyReservationUseCase getAnyReservationUseCase = mock(GetAnyReservationUseCase.class);
+	private final CancelAnyReservationUseCase cancelAnyReservationUseCase = mock(CancelAnyReservationUseCase.class);
 	private final ReservationService service = new ReservationService(startReservationUseCase, getReservationUseCase,
-			listReservationsUseCase, listAllReservationsUseCase, getAnyReservationUseCase, handleReservationEventUseCase, submitPhoneUseCase, cancelReservationUseCase, reconcileUseCase,
-			purgeUseCase);
+			listReservationsUseCase, listAllReservationsUseCase, getAnyReservationUseCase, handleReservationEventUseCase,
+			submitPhoneUseCase, cancelReservationUseCase, cancelAnyReservationUseCase, reconcileUseCase, purgeUseCase);
 
 	@Test
 	void startReservationDelegatesToItsUseCase() {
@@ -100,6 +102,14 @@ class ReservationServiceTest {
 		assertThatThrownBy(() -> service.getAnyReservation(ID))
 				.isInstanceOf(ReservationException.class)
 				.extracting("code").isEqualTo(ReservationException.Code.RESERVATION_NOT_FOUND);
+	}
+
+	@Test
+	void cancelAnyReservationReturnsTheReservationOfItsUseCase() {
+		ReservationWithOwner reservation = ReservationWithOwner.builder().build();
+		when(cancelAnyReservationUseCase.cancelAnyReservation("admin", ID, "Pedido por soporte")).thenReturn(reservation);
+
+		assertThat(service.cancelAnyReservation("admin", ID, "Pedido por soporte")).isSameAs(reservation);
 	}
 
 	@Test

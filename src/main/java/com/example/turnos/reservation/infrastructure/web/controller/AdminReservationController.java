@@ -6,6 +6,7 @@ import java.util.UUID;
 import com.example.turnos.reservation.application.service.ReservationService;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationWithOwner;
+import com.example.turnos.reservation.infrastructure.web.dto.AdminCancelReservationRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.AdminReservationListRequest;
 import com.example.turnos.reservation.infrastructure.web.dto.AdminReservationResponse;
 import com.example.turnos.reservation.infrastructure.web.mapper.ReservationDtoMapper;
@@ -13,8 +14,11 @@ import com.example.turnos.shared.infrastructure.web.pagination.PaginationHeaders
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -44,6 +48,16 @@ public class AdminReservationController {
 	@GetMapping("/{id}")
 	public ResponseEntity<AdminReservationResponse> getAnyReservation(@PathVariable UUID id) {
 		return ResponseEntity.ok(reservationDtoMapper.toAdminResponse(reservationService.getAnyReservation(id)));
+	}
+
+	// El administrador es el del JWT, igual que el dueño en las rutas de usuario. Responde la vista
+	// administrativa, para que se vea quién canceló y por qué. Mismos códigos que la cancelación del dueño.
+	@PostMapping("/{id}/cancel")
+	public ResponseEntity<AdminReservationResponse> cancelAnyReservation(@PathVariable UUID id,
+			@Valid @RequestBody AdminCancelReservationRequest request, Authentication authentication) {
+		ReservationWithOwner cancelled = reservationService.cancelAnyReservation(authentication.getName(), id,
+				request.getReason());
+		return ResponseEntity.ok(reservationDtoMapper.toAdminResponse(cancelled));
 	}
 
 }
