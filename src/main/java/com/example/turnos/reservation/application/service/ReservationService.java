@@ -14,6 +14,7 @@ import com.example.turnos.reservation.domain.model.ReservationProcess;
 import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 import com.example.turnos.reservation.domain.model.ReservationWithOwner;
+import com.example.turnos.reservation.domain.ports.in.CancelAnyReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.CancelReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetAnyReservationUseCase;
 import com.example.turnos.reservation.domain.ports.in.GetReservationUseCase;
@@ -39,6 +40,7 @@ public class ReservationService {
 	private final HandleReservationEventUseCase handleReservationEventUseCase;
 	private final SubmitPhoneUseCase submitPhoneUseCase;
 	private final CancelReservationUseCase cancelReservationUseCase;
+	private final CancelAnyReservationUseCase cancelAnyReservationUseCase;
 	private final ReconcileReservationProcessesUseCase reconcileReservationProcessesUseCase;
 	private final PurgeProcessedEventsUseCase purgeProcessedEventsUseCase;
 
@@ -81,6 +83,12 @@ public class ReservationService {
 	// Como iniciar: el caso de uso informa cada rechazo con su código (ADR-0059).
 	public ReservationProcess cancelReservation(String login, UUID id, String reason) {
 		return cancelReservationUseCase.cancelReservation(login, id, reason);
+	}
+
+	// Operación del administrador (ADR-0037). Como la del dueño, el caso de uso informa cada rechazo con
+	// su código (ADR-0059).
+	public ReservationWithOwner cancelAnyReservation(String adminLogin, UUID id, String reason) {
+		return cancelAnyReservationUseCase.cancelAnyReservation(adminLogin, id, reason);
 	}
 
 	// Las dos las llama el scheduler de la reconciliación (ADR-0030).
