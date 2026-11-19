@@ -15,7 +15,7 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * Lo que puede hacer cambiar de estado a un proceso de reserva: una respuesta REST de la cátedra,
+ * Indica lo que puede hacer cambiar de estado a un proceso de reserva: una respuesta REST de la cátedra,
  * un evento Kafka o la reconciliación. Cada constante es una fila de la tabla de transiciones de
  * docs/arq/maquina-estados.md: el estado al que lleva y los únicos estados desde los que vale.
  *
@@ -23,6 +23,7 @@ import java.util.Set;
  * repetido nunca hace retroceder un proceso ni lo saca de un estado final.
  */
 public enum ReservationTrigger {
+	// formato: SUCESO(ESTADO_NUEVO EnumSet.of(ESTADO_PREVIO))
 
 	// La cátedra crea el hold (201).
 	HOLD_CREATED(HELD, EnumSet.of(STARTED)),
@@ -66,7 +67,7 @@ public enum ReservationTrigger {
 	public ReservationStatus getTarget() {
 		return target;
 	}
-
+	// cuestiona la validez de si un SUCESO aplica a un ESTADO_PREVIO . Si es false no se produce la transicion
 	public boolean appliesTo(ReservationStatus status) {
 		return sources.contains(status);
 	}

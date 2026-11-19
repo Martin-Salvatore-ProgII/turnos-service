@@ -10,6 +10,7 @@ import java.util.UUID;
 import com.example.turnos.reservation.domain.model.PageQuery;
 import com.example.turnos.reservation.domain.model.PageResult;
 import com.example.turnos.reservation.domain.model.ReservationProcess;
+import com.example.turnos.reservation.domain.model.ReservationSearchCriteria;
 import com.example.turnos.reservation.domain.model.ReservationStatus;
 
 public interface ReservationProcessRepository {
@@ -26,6 +27,10 @@ public interface ReservationProcessRepository {
 	// Una página de los procesos de ese usuario, del más reciente al más antiguo. Con status, solo los que
 	// están en ese estado; null es sin filtro (HU-08, ADR-0025).
 	PageResult<ReservationProcess> findByUserId(Long userId, ReservationStatus status, PageQuery page);
+
+	// Una página de los procesos de todos los usuarios que cumplen los filtros, del más reciente al más
+	// antiguo. Del dueño usa solo ownerId: ownerLogin lo resuelve antes el caso de uso (ADR-0064).
+	PageResult<ReservationProcess> search(ReservationSearchCriteria criteria, PageQuery page);
 
 	// El proceso por su id local, sin filtrar por dueño: lo usa el servicio por su cuenta, no un pedido del
 	// usuario (por ejemplo, para releer un proceso que cambió en el medio, ADR-0068).

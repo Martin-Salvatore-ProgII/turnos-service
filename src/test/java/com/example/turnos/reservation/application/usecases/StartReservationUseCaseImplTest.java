@@ -44,7 +44,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
-// Las reglas de CU-04, pasos 3 a 6, con JUnit y Mockito, sin Spring. La agenda es la de Laura Medina
+// Las reglas de CU-04, pasos 3 a 6, con JUnit y Mockito, sin Spring, DB, ni catedra. La agenda es de Laura Medina
 // (204): lunes de 11:00 a 15:00, slots de 20 minutos. "Ahora" es el lunes 2026-11-02 a las 12:30 de
 // Argentina (15:30 UTC).
 class StartReservationUseCaseImplTest {
@@ -55,7 +55,7 @@ class StartReservationUseCaseImplTest {
 	private static final LocalTime ELEVEN_TWENTY = LocalTime.parse("11:20");
 	private static final long LAURA = 204L;
 	private static final UUID EXTERNAL_PATIENT_ID = UUID.fromString("0f8fad5b-d9cb-469f-a165-70867728950e");
-
+	// se definen las clases que seran mockeadas. El CU piensa que habla con los reales
 	private final UserRepository userRepository = mock(UserRepository.class);
 	private final CatalogClientPort catalogClientPort = mock(CatalogClientPort.class);
 	private final ReservationProcessRepository reservationProcessRepository = mock(ReservationProcessRepository.class);
@@ -66,10 +66,11 @@ class StartReservationUseCaseImplTest {
 
 	private StartReservationUseCaseImpl useCase;
 
-	@BeforeEach
+	@BeforeEach // corre antes de cada test para simular el caso de uso y dejar lo que necesita el test para funcionar
 	void setUp() {
 		useCase = new StartReservationUseCaseImpl(userRepository, catalogClientPort, reservationProcessRepository,
-				holdPort, AvailabilityHorizon.builder().days(60).build(), Clock.fixed(NOW, ZoneOffset.UTC));
+				holdPort, AvailabilityHorizon.builder().days(60).build(), Clock.fixed(NOW, ZoneOffset.UTC)); //congela el tiempo
+		// como responder ante cada suceso (parte de mockear es decir que mockear)		
 		when(userRepository.findByLogin("juan")).thenReturn(Optional.of(juan()));
 		when(catalogClientPort.getProfessionalAgenda(LAURA)).thenReturn(Optional.of(laura(true)));
 		when(reservationProcessRepository.create(any())).thenAnswer(invocation -> saved(invocation.getArgument(0)));
@@ -79,6 +80,9 @@ class StartReservationUseCaseImplTest {
 	}
 
 	@Test
+	// 1. se ejecuta el setUp() que prepara el comportamiento de los mocks
+	// 2. se ejecuta el caso de uso (en este caso startReservation)
+	// 3. comprobamos que suceda lo esperado. assertThat() sobre el resultado y verify() sobre que hizo el CU con los mocks
 	void savesEachStepBeforeTheNextCallAndEndsAwaitingTheRequest() {
 		Instant holdExpiresAt = Instant.parse("2026-11-02T15:40:00Z");
 		Instant processExpiresAt = Instant.parse("2026-11-02T15:41:00Z");

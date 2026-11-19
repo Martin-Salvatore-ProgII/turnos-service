@@ -3,6 +3,7 @@ package com.example.turnos.user.infrastructure.persistence.adapter;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -81,6 +82,19 @@ class JpaUserRepositoryAdapterTest {
 		assertThat(found.isActivated()).isTrue();
 		assertThat(found.getAuthorities()).containsExactly("ROLE_USER");
 		assertThat(found.getCreatedBy()).isEqualTo("system");
+	}
+
+	@Test
+	void findAllByIdReadsOnlyTheUsersOfThoseIdsAndSkipsTheMissingOnes() {
+		User juan = adapter.create(newUser("juan", "juan@example.com"));
+		User ana = adapter.create(newUser("ana", "ana@example.com"));
+		adapter.create(newUser("luis", "luis@example.com"));
+		entityManager.flush();
+		entityManager.clear();
+
+		List<User> found = adapter.findAllById(List.of(juan.getId(), ana.getId(), -1L));
+
+		assertThat(found).extracting(User::getLogin).containsExactlyInAnyOrder("juan", "ana");
 	}
 
 	@Test

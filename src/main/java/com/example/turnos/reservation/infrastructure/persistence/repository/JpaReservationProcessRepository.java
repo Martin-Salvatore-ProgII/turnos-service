@@ -12,10 +12,12 @@ import com.example.turnos.reservation.infrastructure.persistence.entity.Reservat
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface JpaReservationProcessRepository extends JpaRepository<ReservationProcessEntity, UUID> {
+public interface JpaReservationProcessRepository extends JpaRepository<ReservationProcessEntity, UUID>,
+		JpaSpecificationExecutor<ReservationProcessEntity> {
 
 	Optional<ReservationProcessEntity> findByIdAndUserId(UUID id, Long userId);
 
