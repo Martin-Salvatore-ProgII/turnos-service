@@ -30,8 +30,12 @@ services:
       JWT_PRIVATE_KEY_LOCATION: file:/run/secrets/jwt-private.pem
       CATEDRA_API_URL: ${TURNOS_CATEDRA_API_URL}
       CATEDRA_TECHNICAL_TOKEN: ${TURNOS_CATEDRA_TECHNICAL_TOKEN}
-      # El catálogo, por la red interna de Compose: su puerto dentro del contenedor.
-      CATALOG_API_URL: http://catalogo-service:8080
+      # El catálogo, por la red interna de Compose: su puerto dentro del contenedor, también por HTTPS.
+      CATALOG_API_URL: https://catalogo-service:8080
+      # HTTPS con el certificado autofirmado de secrets/, generado con generar-certificado.sh (ADR-0035).
+      SPRING_PROFILES_ACTIVE: tls
+      TLS_CERTIFICATE_LOCATION: file:/run/secrets/tls.crt
+      TLS_PRIVATE_KEY_LOCATION: file:/run/secrets/tls.key
       ADMIN_LOGIN: ${TURNOS_ADMIN_LOGIN:-}
       ADMIN_PASSWORD: ${TURNOS_ADMIN_PASSWORD:-}
       ADMIN_EMAIL: ${TURNOS_ADMIN_EMAIL:-}

@@ -1,6 +1,9 @@
 package com.example.turnos.shared.infrastructure.config;
 
+import javax.net.ssl.SSLContext;
+
 import com.example.turnos.shared.infrastructure.rest.NoRetryRequestFactory;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,12 +20,21 @@ import org.springframework.web.client.RestClient;
 @EnableConfigurationProperties(CatalogProperties.class)
 public class CatalogRestClientConfig {
 
-	// Misma conexión que hacia la cátedra: con timeouts y sin reintentos propios (ADR-0029).
 	@Bean
-	public RestClient catalogRestClient(CatalogProperties properties) {
+	public RestClient catalogRestClient(CatalogProperties properties, SslBundles sslBundles) {
+		// Con el perfil tls, el catálogo responde por HTTPS con el certificado autofirmado: se confía en él
+		// por su bundle (ADR-0035). Sin bundle, como en las pruebas, la conexión es la de siempre.
+		SSLContext sslContext = properties.sslBundle() == null ? null
+				: sslBundles.getBundle(properties.sslBundle()).createSslContext();
+		return catalogRestClient(properties, sslContext);
+	}
+
+	// Misma conexión que hacia la cátedra: con timeouts y sin reintentos propios (ADR-0029).
+	public RestClient catalogRestClient(CatalogProperties properties, SSLContext sslContext) {
 		return RestClient.builder()
 				.baseUrl(properties.apiUrl())
-				.requestFactory(NoRetryRequestFactory.create(properties.connectTimeout(), properties.readTimeout()))
+				.requestFactory(NoRetryRequestFactory.create(properties.connectTimeout(), properties.readTimeout(),
+						sslContext))
 				.requestInterceptor(forwardUserToken())
 				.build();
 	}

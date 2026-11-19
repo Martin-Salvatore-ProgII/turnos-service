@@ -9,6 +9,8 @@ import java.net.Socket;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.net.ssl.SSLContext;
+
 import com.example.turnos.FakeCatedra;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,8 +74,8 @@ class NoHiddenRetryTest {
 	void theCatalogClientDoesNotRepeatAGetWhenTheConnectionIsCut() {
 		Jwt jwt = Jwt.withTokenValue("user-token").header("alg", "none").claim("sub", "user").build();
 		SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
-		CatalogProperties properties = new CatalogProperties(baseUrl(), CONNECT_TIMEOUT, READ_TIMEOUT);
-		RestClient client = new CatalogRestClientConfig().catalogRestClient(properties);
+		CatalogProperties properties = new CatalogProperties(baseUrl(), CONNECT_TIMEOUT, READ_TIMEOUT, null);
+		RestClient client = new CatalogRestClientConfig().catalogRestClient(properties, (SSLContext) null);
 
 		assertThatThrownBy(() -> client.get().uri("/api/any-read").retrieve().body(String.class))
 				.isInstanceOf(ResourceAccessException.class);
